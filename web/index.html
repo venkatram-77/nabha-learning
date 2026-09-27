@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Student Portal | Nabha Learning Hub</title>
+    <meta
+      name="description"
+      content="Lesson library, progress tracking and offline study packs for students enrolled at the Nabha Learning Hub."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css?v=1" />
+  </head>
+  <body>
+    <header class="portal-header">
+      <div class="wrap header-row">
+        <a class="brand" href="../university_portal/index.html">
+          <span class="brand-icon">N</span>
+          <span>
+            <span class="brand-name">Nabha Learning Hub</span>
+            <span class="brand-tag">Student Portal</span>
+          </span>
+        </a>
+
+        <div class="header-right">
+          <div class="who" id="who" hidden>
+            <span class="who-name" id="whoName"></span>
+            <span class="who-meta" id="whoMeta"></span>
+          </div>
+          <button class="ghost-btn" type="button" id="signOut" hidden>Switch student</button>
+          <a class="ghost-btn" href="../university_portal/index.html">Back to site</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="signin" id="signinView">
+        <div class="signin-head">
+          <span class="eyebrow">Student sign in</span>
+          <h1>Pick up where you left off.</h1>
+          <p>
+            Continue an enrollment you started on the learning hub, or open one of the demo
+            student accounts to explore the lesson library.
+          </p>
+        </div>
+
+        <div class="signin-group" id="enrolledGroup" hidden>
+          <h2>Your enrollment</h2>
+          <div class="signin-cards" id="enrolledList"></div>
+        </div>
+
+        <div class="signin-group">
+          <h2>Demo students</h2>
+          <div class="signin-cards" id="demoList"></div>
+        </div>
+
+        <p class="signin-foot">
+          Not enrolled yet?
+          <a href="../university_portal/index.html">Register on the learning hub</a> to create your
+          student record first.
+        </p>
+      </section>
+
+      <section id="portalView" hidden>
+        <div class="overview">
+          <div class="overview-main">
+            <span class="eyebrow" id="trackBadge">Track</span>
+            <h1 id="greeting">Welcome back</h1>
+            <p id="greetingNote"></p>
+          </div>
+          <div class="progress-card">
+            <div class="ring" id="ring">
+              <span id="ringValue">0%</span>
+            </div>
+            <div class="progress-meta">
+              <strong id="doneCount">0 of 0</strong>
+              <span>lessons completed</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-row" id="statRow"></div>
+
+        <div class="toolbar">
+          <div class="chips" id="subjectChips" role="tablist" aria-label="Filter by subject"></div>
+          <div class="toolbar-right">
+            <label class="toggle">
+              <input type="checkbox" id="hideDone" />
+              <span>Hide completed</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="lesson-grid" id="lessonGrid"></div>
+        <p class="empty" id="emptyState" hidden>
+          Nothing matches this filter. Clear the filter to see every module.
+        </p>
+
+        <div class="offline">
+          <div>
+            <h2>Offline study packs</h2>
+            <p>
+              Download the whole track once, then keep studying without any connection. Packs are
+              also handed out on a shared tablet at the village mentor centre.
+            </p>
+          </div>
+          <div class="pack-list" id="packList"></div>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="lesson-modal" id="lessonModal" aria-labelledby="lessonTitle">
+      <article class="lesson-shell">
+        <button class="modal-close" type="button" id="closeLesson" aria-label="Close lesson">
+          &times;
+        </button>
+
+        <span class="pill" id="lessonMeta"></span>
+        <h2 id="lessonTitle"></h2>
+        <p class="lesson-summary" id="lessonSummary"></p>
+
+        <div class="lesson-body" id="lessonBody"></div>
+
+        <div class="lesson-actions">
+          <button class="secondary-btn" type="button" id="markOpen">Mark as not done</button>
+          <button class="primary-btn" type="button" id="markDone">Mark complete</button>
+        </div>
+      </article>
+    </dialog>
+
+    <footer class="portal-footer">
+      <div class="wrap">
+        <span>Nabha Learning Hub · Digital learning for rural students in Nabha, Punjab</span>
+      </div>
+    </footer>
+
+    <script src="data/lessons.js?v=1"></script>
+    <script src="app.js?v=1"></script>
+  </body>
+</html>
