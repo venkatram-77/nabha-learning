@@ -32,7 +32,7 @@
             <span class="who-name" id="whoName"></span>
             <span class="who-meta" id="whoMeta"></span>
           </div>
-          <button class="ghost-btn" type="button" id="signOut" hidden>Switch student</button>
+          <button class="ghost-btn" type="button" id="signOut" hidden>Sign out</button>
           <a class="ghost-btn" href="../university_portal/index.html">Back to site</a>
         </div>
       </div>
@@ -41,22 +41,65 @@
     <main class="wrap">
       <section class="signin" id="signinView">
         <div class="signin-head">
-          <span class="eyebrow">Student sign in</span>
-          <h1>Pick up where you left off.</h1>
-          <p>
-            Continue an enrollment you started on the learning hub, or open one of the demo
-            student accounts to explore the lesson library.
+          <span class="eyebrow">Sign in</span>
+          <h1>Choose how you are signing in.</h1>
+          <p id="signinBlurb">
+            Students see only their own lessons and progress. Faculty and administrators see the
+            progress of every student on their track.
           </p>
         </div>
 
-        <div class="signin-group" id="enrolledGroup" hidden>
-          <h2>Your enrollment</h2>
-          <div class="signin-cards" id="enrolledList"></div>
+        <div class="role-switch" id="roleSwitch" role="tablist" aria-label="Choose a role">
+          <button class="role-tab is-active" type="button" id="roleStudent" role="tab" aria-selected="true">
+            <strong>Student</strong>
+            <span>My own lessons and progress</span>
+          </button>
+          <button class="role-tab" type="button" id="roleStaff" role="tab" aria-selected="false">
+            <strong>Faculty or admin</strong>
+            <span>Class progress dashboard</span>
+          </button>
         </div>
 
-        <div class="signin-group">
-          <h2>Demo students</h2>
-          <div class="signin-cards" id="demoList"></div>
+        <div id="studentSignin">
+          <div class="signin-group">
+            <h2>Find your record</h2>
+            <form class="lookup" id="lookupForm" autocomplete="off">
+              <label class="lookup-label" for="lookupInput">Your name or enrollment ID</label>
+              <div class="lookup-row">
+                <input
+                  class="lookup-input"
+                  id="lookupInput"
+                  type="text"
+                  placeholder="e.g. Aarav Sharma"
+                  maxlength="60"
+                />
+                <button class="primary-btn" type="submit" id="lookupSubmit">Continue</button>
+              </div>
+              <p class="lookup-error" id="lookupError" hidden></p>
+              <p class="lookup-hint" id="lookupHint"></p>
+            </form>
+            <div class="signin-cards" id="matchList"></div>
+          </div>
+        </div>
+
+        <div id="staffSignin" hidden>
+          <div class="signin-group">
+            <h2>Staff sign in</h2>
+            <form class="lookup" id="staffForm" autocomplete="off">
+              <div class="lookup-row">
+                <input
+                  class="lookup-input"
+                  id="staffPasscode"
+                  type="password"
+                  placeholder="Passcode"
+                  maxlength="60"
+                />
+                <button class="primary-btn" type="submit" id="staffSubmit">Sign in</button>
+              </div>
+              <p class="lookup-error" id="staffError" hidden></p>
+            </form>
+            <p class="lookup-hint" id="staffHint"></p>
+          </div>
         </div>
 
         <p class="signin-foot">
@@ -64,6 +107,60 @@
           <a href="../university_portal/index.html">Register on the learning hub</a> to create your
           student record first.
         </p>
+      </section>
+
+      <section id="staffView" hidden>
+        <div class="overview">
+          <div class="overview-main">
+            <span class="eyebrow" id="staffBadge">Class dashboard</span>
+            <h1 id="staffGreeting">Progress overview</h1>
+            <p id="staffNote"></p>
+          </div>
+          <div class="progress-card">
+            <div class="ring" id="staffRing">
+              <span id="staffRingValue">0%</span>
+            </div>
+            <div class="progress-meta">
+              <strong id="staffDoneCount">0 of 0</strong>
+              <span>lessons completed by all students</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-row" id="staffStats"></div>
+
+        <div class="toolbar">
+          <div class="chips" id="staffChips" role="tablist" aria-label="Filter students by class"></div>
+          <div class="toolbar-right">
+            <label class="toggle">
+              <input type="checkbox" id="staffHideDone" />
+              <span>Hide students at 100%</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="subject-summary" id="subjectSummary"></div>
+
+        <div class="table-scroll">
+          <table class="progress-table">
+            <thead>
+              <tr>
+                <th scope="col">Student</th>
+                <th scope="col">Class</th>
+                <th scope="col">Village</th>
+                <th scope="col">Progress</th>
+                <th scope="col">Subjects</th>
+                <th scope="col">Last active</th>
+              </tr>
+            </thead>
+            <tbody id="staffRows"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="staffEmpty" hidden>
+          No students match this filter.
+        </p>
+
+        <p class="access-note" id="accessNote"></p>
       </section>
 
       <section id="portalView" hidden>
@@ -139,7 +236,10 @@
       </div>
     </footer>
 
-    <script src="data/lessons.js?v=1"></script>
-    <script src="app.js?v=1"></script>
+    <script src="data/lessons.js?v=2"></script>
+    <script src="data/staff.js?v=1"></script>
+    <script src="data/access-note.js?v=1"></script>
+    <script src="data/store.js?v=1"></script>
+    <script src="app.js?v=2"></script>
   </body>
 </html>

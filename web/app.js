@@ -1,16 +1,18 @@
-const ENROLL_STORE_KEY = 'nabha-learning-hub-enrollments';
-const PORTAL_STORE_KEY = 'nabha-learning-hub-portal';
-const PACK_STORE_KEY = 'nabha-learning-hub-packs';
-
 document.addEventListener('DOMContentLoaded', () => {
   const lessons = window.NLH_LESSONS || [];
   const tracks = window.NLH_TRACKS || {};
+  const roster = window.NLH_ROSTER;
+  const progressStore = window.NLH_PROGRESS;
+  const staffRoster = window.NLH_STAFF || [];
+
+  const SESSION_KEY = 'nabha-learning-hub-session-v2';
 
   const signinView = document.getElementById('signinView');
   const portalView = document.getElementById('portalView');
-  const enrolledGroup = document.getElementById('enrolledGroup');
-  const enrolledList = document.getElementById('enrolledList');
-  const demoList = document.getElementById('demoList');
+  const staffView = document.getElementById('staffView');
+  const studentSignin = document.getElementById('studentSignin');
+  const staffSignin = document.getElementById('staffSignin');
+  const signinBlurb = document.getElementById('signinBlurb');
   const who = document.getElementById('who');
   const whoName = document.getElementById('whoName');
   const whoMeta = document.getElementById('whoMeta');
@@ -36,13 +38,44 @@ document.addEventListener('DOMContentLoaded', () => {
   const markOpen = document.getElementById('markOpen');
   const closeLesson = document.getElementById('closeLesson');
 
-  const session = readJson(PORTAL_STORE_KEY, {});
+  const roleStudent = document.getElementById('roleStudent');
+  const roleStaff = document.getElementById('roleStaff');
+  const lookupForm = document.getElementById('lookupForm');
+  const lookupInput = document.getElementById('lookupInput');
+  const lookupSubmit = document.getElementById('lookupSubmit');
+  const lookupError = document.getElementById('lookupError');
+  const lookupHint = document.getElementById('lookupHint');
+  const matchList = document.getElementById('matchList');
+  const staffForm = document.getElementById('staffForm');
+  const staffPasscode = document.getElementById('staffPasscode');
+  const staffError = document.getElementById('staffError');
+  const staffHint = document.getElementById('staffHint');
 
+  const staffBadge = document.getElementById('staffBadge');
+  const staffGreeting = document.getElementById('staffGreeting');
+  const staffNote = document.getElementById('staffNote');
+  const staffRing = document.getElementById('staffRing');
+  const staffRingValue = document.getElementById('staffRingValue');
+  const staffDoneCount = document.getElementById('staffDoneCount');
+  const staffStats = document.getElementById('staffStats');
+  const staffChips = document.getElementById('staffChips');
+  const staffHideDone = document.getElementById('staffHideDone');
+  const subjectSummary = document.getElementById('subjectSummary');
+  const staffRows = document.getElementById('staffRows');
+  const staffEmpty = document.getElementById('staffEmpty');
+  const accessNote = document.getElementById('accessNote');
+
+  progressStore.migrate();
+
+  const session = readJson(SESSION_KEY, {});
   let student = session.student || null;
-  let completed = new Set(Array.isArray(session.completed) ? session.completed : []);
-  let packs = new Set(readJson(PACK_STORE_KEY, []));
+  let staff = session.staff || null;
+  let completed = new Set(student ? progressStore.forStudent(student.id).completed : []);
+  let packs = new Set(student ? progressStore.forStudent(student.id).packs : []);
   let subject = 'All';
   let activeLesson = null;
+  let staffFilter = 'All';
+  let role = 'student';
 
   function readJson(key, fallback) {
     try {
@@ -61,17 +94,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function enrolledStudents() {
-    return readJson(ENROLL_STORE_KEY, [])
-      .filter((entry) => entry && entry.fullName)
-      .map((entry) => ({
-        id: entry.id,
-        name: entry.fullName,
-        grade: entry.grade,
-        village: entry.village,
-        track: entry.track
-      }))
-      .reverse();
+  function allStudents() {
+    return roster.all(lessons);
   }
 
   function initials(name) {
@@ -84,18 +108,58 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function trackFor(grade) {
-    const value = Number(grade);
-    if (value <= 5) return 'primary';
-    if (value <= 8) return 'middle';
-    return 'career';
+    return roster.trackFor(grade);
   }
 
-  function persist() {
-    writeJson(PORTAL_STORE_KEY, { student, completed: Array.from(completed) });
-    writeJson(PACK_STORE_KEY, Array.from(packs));
+  function persistStudent() {
+    progressStore.save(student.id, { completed: completed, packs: packs });
+    writeJson(SESSION_KEY, { student: student, staff: null });
   }
 
-  function studentCard(entry, isNew) {
+  function persistStaff() {
+    writeJson(SESSION_KEY, { student: null, staff: staff });
+  }
+
+  function trackLessons() {
+    if (!student) return [];
+    return lessons.filter((lesson) => lesson.track === student.track);
+  }
+
+  function subjectList() {
+    return Array.from(new Set(trackLessons().map((lesson) => lesson.subject)));
+  }
+
+  function progress() {
+    const total = trackLessons().length;
+    const done = trackLessons().filter((lesson) => completed.has(lesson.id)).length;
+    return { total, done, percent: total ? Math.round((done / total) * 100) : 0 };
+  }
+
+  function showView(next) {
+    signinView.hidden = next !== 'signin';
+    portalView.hidden = next !== 'student';
+    staffView.hidden = next !== 'staff';
+    who.hidden = next === 'signin';
+    signOut.hidden = next === 'signin';
+  }
+
+  function setRole(next) {
+    role = next;
+    const isStudent = next === 'student';
+    roleStudent.className = isStudent ? 'role-tab is-active' : 'role-tab';
+    roleStaff.className = isStudent ? 'role-tab' : 'role-tab is-active';
+    roleStudent.setAttribute('aria-selected', String(isStudent));
+    roleStaff.setAttribute('aria-selected', String(!isStudent));
+    studentSignin.hidden = !isStudent;
+    staffSignin.hidden = isStudent;
+    signinBlurb.textContent = isStudent
+      ? 'Students see only their own lessons and progress. Enter your name to find your record.'
+      : 'Faculty and administrators see the progress of every student. Enter the passcode for your role.';
+    staffError.hidden = true;
+    staffHint.textContent = 'Demo build: the faculty and admin passcodes live in web/data/staff.js.';
+  }
+
+  function studentCard(entry) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'signin-card';
@@ -113,79 +177,88 @@ document.addEventListener('DOMContentLoaded', () => {
     body.appendChild(name);
     body.appendChild(meta);
 
-    if (isNew) {
+    if (entry.demo) {
       const tag = document.createElement('span');
       tag.className = 'new-tag';
-      tag.textContent = 'New enrollment';
+      tag.textContent = 'Demo account';
       body.appendChild(tag);
     }
 
     button.appendChild(avatar);
     button.appendChild(body);
-    button.addEventListener('click', () => signIn({ ...entry, track: entry.track || trackFor(entry.grade) }));
+    button.addEventListener('click', () => signInStudent(entry));
     return button;
   }
 
-  function renderSignin() {
-    const enrolled = enrolledStudents();
-    enrolledGroup.hidden = enrolled.length === 0;
-    enrolledList.textContent = '';
-    enrolled.forEach((entry, index) => {
-      enrolledList.appendChild(studentCard(entry, index === 0));
-    });
-
-    demoList.textContent = '';
-    (window.NLH_DEMO_STUDENTS || []).forEach((entry) => {
-      demoList.appendChild(studentCard(entry, false));
+  function renderMatches(matches) {
+    matchList.textContent = '';
+    matches.forEach((entry) => {
+      matchList.appendChild(studentCard(entry));
     });
   }
 
-  function signIn(entry) {
-    student = entry;
+  function renderSignin() {
+    const students = allStudents();
+    const enrolled = students.filter((entry) => !entry.demo).length;
+    const demos = students.filter((entry) => entry.demo).length;
+    lookupHint.textContent = enrolled
+      ? `${enrolled} student record${enrolled === 1 ? '' : 's'} saved on this device.`
+      : `No enrollments saved on this device yet. You can still explore with a demo account${
+          demos === 1 ? '' : 's'
+        } below.`;
+    lookupError.hidden = true;
+    renderMatches([]);
+    setRole(role);
+  }
+
+  function signInStudent(entry) {
+    student = { ...entry, track: entry.track || trackFor(entry.grade) };
+    const stored = progressStore.forStudent(student.id);
+    completed = new Set(stored.completed);
+    packs = new Set(stored.packs);
+    staff = null;
     subject = 'All';
-    persist();
-    renderPortal();
-    signinView.hidden = true;
-    portalView.hidden = false;
-    who.hidden = false;
-    signOut.hidden = false;
+    persistStudent();
     whoName.textContent = student.name;
     whoMeta.textContent = `Class ${student.grade} · ${student.village}`;
+    renderPortal();
+    showView('student');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function signOutStudent() {
+  function signInStaff(entry) {
+    staff = entry;
     student = null;
     completed = new Set();
     packs = new Set();
-    persist();
-    portalView.hidden = true;
-    signinView.hidden = false;
-    who.hidden = true;
-    signOut.hidden = true;
-    renderSignin();
+    staffFilter = 'All';
+    persistStaff();
+    whoName.textContent = staff.name;
+    whoMeta.textContent = `${staff.label} · ${staff.subject}`;
+    staffPasscode.value = '';
+    renderStaff();
+    showView('staff');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function trackLessons() {
-    return lessons.filter((lesson) => lesson.track === student.track);
-  }
-
-  function subjectList() {
-    return Array.from(new Set(trackLessons().map((lesson) => lesson.subject)));
-  }
-
-  function progress() {
-    const total = trackLessons().length;
-    const done = trackLessons().filter((lesson) => completed.has(lesson.id)).length;
-    return { total, done, percent: total ? Math.round((done / total) * 100) : 0 };
+  function signOutUser() {
+    student = null;
+    staff = null;
+    completed = new Set();
+    packs = new Set();
+    subject = 'All';
+    staffFilter = 'All';
+    writeJson(SESSION_KEY, {});
+    showView('signin');
+    renderSignin();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function renderOverview() {
     const track = tracks[student.track] || { label: 'Student', grades: '' };
     trackBadge.textContent = `${track.label} track · ${track.grades}`;
     greeting.textContent = `Welcome back, ${student.name.split(' ')[0]}`;
-    greetingNote.textContent = `${trackLessons().length} modules are unlocked for your track. Mark each lesson complete and your mentor sees the progress on the next visit.`;
+    greetingNote.textContent = `${trackLessons().length} modules are unlocked for your track. Only you can see this progress — faculty and admins see the class totals, not your individual lessons.`;
 
     const { total, done, percent } = progress();
     ring.style.setProperty('--value', percent);
@@ -316,7 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         packs.add(student.track);
       }
-      persist();
+      persistStudent();
       renderPacks();
     });
 
@@ -369,11 +442,310 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       completed.delete(lessonId);
     }
-    persist();
+    persistStudent();
     renderOverview();
     renderGrid();
     syncLessonButtons();
   }
+
+  function studentReport(entry, store) {
+    const record = store[entry.id] || {};
+    const doneSet = new Set(Array.isArray(record.completed) ? record.completed : []);
+    const trackLessonsForStudent = lessons.filter((lesson) => lesson.track === entry.track);
+    const total = trackLessonsForStudent.length;
+    const done = trackLessonsForStudent.filter((lesson) => doneSet.has(lesson.id)).length;
+    const subjects = Array.from(new Set(trackLessonsForStudent.map((lesson) => lesson.subject)));
+    const bySubject = subjects.map((name) => {
+      const inSubject = trackLessonsForStudent.filter((lesson) => lesson.subject === name);
+      const doneInSubject = inSubject.filter((lesson) => doneSet.has(lesson.id)).length;
+      return {
+        name: name,
+        done: doneInSubject,
+        total: inSubject.length,
+        percent: inSubject.length ? Math.round((doneInSubject / inSubject.length) * 100) : 0
+      };
+    });
+    return {
+      student: entry,
+      done: done,
+      total: total,
+      percent: total ? Math.round((done / total) * 100) : 0,
+      minutes: trackLessonsForStudent
+        .filter((lesson) => doneSet.has(lesson.id))
+        .reduce((sum, lesson) => sum + lesson.duration, 0),
+      bySubject: bySubject,
+      updatedAt: record.updatedAt || ''
+    };
+  }
+
+  function relativeTime(iso) {
+    if (!iso) return 'Never';
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return 'Never';
+    const minutes = Math.floor((Date.now() - then) / 60000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hr${hours === 1 ? '' : 's'} ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+    return new Date(iso).toLocaleDateString();
+  }
+
+  function trackLabel(key) {
+    const track = tracks[key] || { label: key, grades: '' };
+    return `${track.label} (${track.grades})`;
+  }
+
+  function reports() {
+    const store = progressStore.all();
+    return allStudents().map((entry) => studentReport(entry, store));
+  }
+
+  function renderStaffChips(reportsForFilter) {
+    const grades = Array.from(new Set(allStudents().map((entry) => String(entry.grade)))).sort(
+      (a, b) => Number(a) - Number(b)
+    );
+    staffChips.textContent = '';
+    ['All'].concat(grades.map((grade) => `Class ${grade}`)).forEach((label) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = label === staffFilter ? 'chip is-active' : 'chip';
+      chip.setAttribute('role', 'tab');
+      chip.textContent = label;
+      const count = label === 'All'
+        ? reportsForFilter.length
+        : reportsForFilter.filter((report) => `Class ${report.student.grade}` === label).length;
+      chip.appendChild(document.createTextNode(` ${count}`));
+      chip.addEventListener('click', () => {
+        staffFilter = label;
+        renderStaff();
+      });
+      staffChips.appendChild(chip);
+    });
+  }
+
+  function renderSubjectSummary(reportsForFilter) {
+    const totals = new Map();
+    reportsForFilter.forEach((report) => {
+      report.bySubject.forEach((subject) => {
+        if (!totals.has(subject.name)) {
+          totals.set(subject.name, { name: subject.name, done: 0, total: 0, students: 0 });
+        }
+        const bucket = totals.get(subject.name);
+        bucket.done += subject.done;
+        bucket.total += subject.total;
+        bucket.students += 1;
+      });
+    });
+
+    subjectSummary.textContent = '';
+    if (!totals.size) return;
+
+    const title = document.createElement('h2');
+    title.textContent = 'Subject completion across the class';
+    subjectSummary.appendChild(title);
+
+    const grid = document.createElement('div');
+    grid.className = 'subject-grid';
+    Array.from(totals.values())
+      .sort((a, b) => b.total - a.total)
+      .forEach((bucket) => {
+        const percent = bucket.total ? Math.round((bucket.done / bucket.total) * 100) : 0;
+        const card = document.createElement('div');
+        card.className = 'subject-card';
+
+        const head = document.createElement('div');
+        head.className = 'subject-head';
+        const name = document.createElement('strong');
+        name.textContent = bucket.name;
+        const value = document.createElement('span');
+        value.textContent = `${percent}%`;
+        head.appendChild(name);
+        head.appendChild(value);
+
+        const bar = document.createElement('div');
+        bar.className = 'bar';
+        const fill = document.createElement('span');
+        fill.style.width = `${percent}%`;
+        bar.appendChild(fill);
+
+        const meta = document.createElement('span');
+        meta.className = 'subject-meta';
+        meta.textContent = `${bucket.done} of ${bucket.total} lessons · ${bucket.students} student${bucket.students === 1 ? '' : 's'}`;
+
+        card.appendChild(head);
+        card.appendChild(bar);
+        card.appendChild(meta);
+        grid.appendChild(card);
+      });
+
+    subjectSummary.appendChild(grid);
+  }
+
+  function progressCell(report) {
+    const cell = document.createElement('td');
+    const wrap = document.createElement('div');
+    wrap.className = 'cell-progress';
+
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const fill = document.createElement('span');
+    fill.style.width = `${report.percent}%`;
+    bar.appendChild(fill);
+
+    const label = document.createElement('span');
+    label.className = 'cell-count';
+    label.textContent = `${report.done}/${report.total}`;
+
+    wrap.appendChild(bar);
+    wrap.appendChild(label);
+    cell.appendChild(wrap);
+    return cell;
+  }
+
+  function subjectCell(report) {
+    const cell = document.createElement('td');
+    const list = document.createElement('div');
+    list.className = 'mini-list';
+    report.bySubject.forEach((subject) => {
+      const item = document.createElement('span');
+      item.className = subject.percent === 100 ? 'mini is-full' : 'mini';
+      item.textContent = `${subject.name} ${subject.percent}%`;
+      list.appendChild(item);
+    });
+    cell.appendChild(list);
+    return cell;
+  }
+
+  function renderStaffRows(reportsForFilter) {
+    const visible = reportsForFilter
+      .filter((report) => !staffHideDone.checked || report.percent < 100)
+      .sort((a, b) => a.percent - b.percent);
+
+    staffRows.textContent = '';
+    staffEmpty.hidden = visible.length > 0;
+
+    visible.forEach((report) => {
+      const row = document.createElement('tr');
+
+      const nameCell = document.createElement('td');
+      const who_ = document.createElement('div');
+      who_.className = 'cell-who';
+      const avatar = document.createElement('span');
+      avatar.className = 'who-avatar';
+      avatar.textContent = initials(report.student.name);
+      const text = document.createElement('div');
+      const strong = document.createElement('strong');
+      strong.textContent = report.student.name;
+      const meta = document.createElement('span');
+      meta.textContent = trackLabel(report.student.track);
+      text.appendChild(strong);
+      text.appendChild(meta);
+      who_.appendChild(avatar);
+      who_.appendChild(text);
+      nameCell.appendChild(who_);
+
+      const gradeCell = document.createElement('td');
+      gradeCell.textContent = `Class ${report.student.grade}`;
+
+      const villageCell = document.createElement('td');
+      villageCell.textContent = report.student.village;
+
+      const lastCell = document.createElement('td');
+      lastCell.textContent = relativeTime(report.updatedAt);
+
+      row.appendChild(nameCell);
+      row.appendChild(gradeCell);
+      row.appendChild(villageCell);
+      row.appendChild(progressCell(report));
+      row.appendChild(subjectCell(report));
+      row.appendChild(lastCell);
+      staffRows.appendChild(row);
+    });
+  }
+
+  function renderStaff() {
+    const everyReport = reports();
+    const scoped = staffFilter === 'All'
+      ? everyReport
+      : everyReport.filter((report) => `Class ${report.student.grade}` === staffFilter);
+
+    const totalDone = scoped.reduce((sum, report) => sum + report.done, 0);
+    const totalLessons = scoped.reduce((sum, report) => sum + report.total, 0);
+    const overall = totalLessons ? Math.round((totalDone / totalLessons) * 100) : 0;
+    const finished = scoped.filter((report) => report.percent === 100).length;
+    const untouched = scoped.filter((report) => report.done === 0).length;
+    const minutes = scoped.reduce((sum, report) => sum + report.minutes, 0);
+    const average = scoped.length ? Math.round(scoped.reduce((s, r) => s + r.percent, 0) / scoped.length) : 0;
+
+    staffBadge.textContent = `${staff.label} dashboard`;
+    staffGreeting.textContent = `Progress across ${scoped.length} student${scoped.length === 1 ? '' : 's'}`;
+    staffNote.textContent = `Signed in as ${staff.name}. Students cannot see this page or each other’s progress — only faculty and admin roles reach it.`;
+
+    staffRing.style.setProperty('--value', overall);
+    staffRingValue.textContent = `${overall}%`;
+    staffDoneCount.textContent = `${totalDone} of ${totalLessons}`;
+
+    staffStats.textContent = '';
+    [
+      { value: everyReport.length, label: 'Students enrolled' },
+      { value: `${average}%`, label: 'Average per student' },
+      { value: finished, label: 'Tracks finished' },
+      { value: untouched, label: 'Not started' },
+      { value: `${Math.round(minutes / 60)} hr`, label: 'Study time logged' }
+    ].forEach((stat) => {
+      const box = document.createElement('div');
+      box.className = 'stat-box';
+      const strong = document.createElement('strong');
+      strong.textContent = stat.value;
+      const span = document.createElement('span');
+      span.textContent = stat.label;
+      box.appendChild(strong);
+      box.appendChild(span);
+      staffStats.appendChild(box);
+    });
+
+    renderStaffChips(scoped);
+    renderSubjectSummary(scoped);
+    renderStaffRows(scoped);
+    accessNote.textContent = window.NLH_ACCESS_NOTE || '';
+  }
+
+  roleStudent.addEventListener('click', () => setRole('student'));
+  roleStaff.addEventListener('click', () => setRole('staff'));
+
+  lookupForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const matches = roster.find(allStudents(), lookupInput.value);
+    lookupError.hidden = true;
+    if (!matches.length) {
+      lookupError.textContent = 'No student record matches that name. Check the spelling, or register on the learning hub first.';
+      lookupError.hidden = false;
+      renderMatches([]);
+      return;
+    }
+    if (matches.length === 1) {
+      signInStudent(matches[0]);
+      return;
+    }
+    renderMatches(matches);
+    lookupError.textContent = 'More than one record matches. Pick the right one below.';
+    lookupError.hidden = false;
+  });
+
+  staffForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const entered = staffPasscode.value.trim();
+    const match = staffRoster.find((entry) => entry.passcode === entered);
+    if (!match) {
+      staffError.textContent = 'That passcode does not match any faculty or admin account.';
+      staffError.hidden = false;
+      return;
+    }
+    staffError.hidden = true;
+    signInStaff(match);
+  });
 
   markDone.addEventListener('click', () => activeLesson && toggleComplete(activeLesson.id, true));
   markOpen.addEventListener('click', () => activeLesson && toggleComplete(activeLesson.id, false));
@@ -386,17 +758,21 @@ document.addEventListener('DOMContentLoaded', () => {
     activeLesson = null;
   });
   hideDone.addEventListener('change', renderGrid);
-  signOut.addEventListener('click', signOutStudent);
+  staffHideDone.addEventListener('change', () => renderStaff());
+  signOut.addEventListener('click', signOutUser);
 
-  if (student) {
-    signinView.hidden = true;
-    portalView.hidden = false;
-    who.hidden = false;
-    signOut.hidden = false;
+  if (staff) {
+    whoName.textContent = staff.name;
+    whoMeta.textContent = `${staff.label} · ${staff.subject}`;
+    renderStaff();
+    showView('staff');
+  } else if (student) {
     whoName.textContent = student.name;
     whoMeta.textContent = `Class ${student.grade} · ${student.village}`;
     renderPortal();
+    showView('student');
   } else {
+    showView('signin');
     renderSignin();
   }
 });
