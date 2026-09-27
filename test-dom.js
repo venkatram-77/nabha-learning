@@ -3,6 +3,7 @@ const path = require('path');
 const vm = require('vm');
 
 const web = path.join(__dirname, 'web');
+const downloads = [];
 
 function makeEl(tag = 'div') {
   const el = {
@@ -26,6 +27,7 @@ function makeEl(tag = 'div') {
     set disabled(v) { this.attributes.disabled = v; },
     get disabled() { return !!this.attributes.disabled; },
     appendChild(child) { this.children.push(child); return child; },
+    removeChild(child) { this.children = this.children.filter((c) => c !== child); return child; },
     setAttribute(k, v) { this.attributes[k] = v; },
     getAttribute(k) { return this.attributes[k]; },
     addEventListener(name, fn) { (this._listeners[name] = this._listeners[name] || []).push(fn); },
@@ -34,7 +36,7 @@ function makeEl(tag = 'div') {
     showModal() { this.attributes.open = true; },
     close() { this.attributes.open = false; (this._listeners.close || []).forEach((fn) => fn({})); },
     focus() {},
-    click() { this.dispatch('click'); },
+    click() { if (typeof this.download === 'string') downloads.push(this); this.dispatch('click'); },
     querySelector() { return null; },
     querySelectorAll() { return []; }
   };
@@ -49,7 +51,7 @@ const ids = [
   'lessonBody','markDone','markOpen','closeLesson','roleStudent','roleStaff','lookupForm','lookupInput',
   'lookupSubmit','lookupError','lookupHint','matchList','staffForm','staffPasscode','staffError','staffHint',
   'staffBadge','staffGreeting','staffNote','staffRing','staffRingValue','staffDoneCount','staffStats',
-  'staffChips','staffHideDone','subjectSummary','staffRows','staffEmpty','accessNote'
+  'staffChips','staffHideDone','subjectSummary','staffRows','staffEmpty','accessNote','qaPanel'
 ];
 ids.forEach((id) => {
   const el = makeEl();
@@ -57,9 +59,11 @@ ids.forEach((id) => {
   el.value = '';
   byId.set(id, el);
 });
+const documentShimBody = makeEl('body');
 
 const store = new Map();
 const documentShim = {
+  body: documentShimBody,
   getElementById: (id) => byId.get(id) || null,
   createElement: (tag) => makeEl(tag),
   createTextNode: (t) => ({ nodeType: 3, textContent: String(t) }),
@@ -79,15 +83,22 @@ const sandbox = {
   String,
   Math,
   Set,
-  Map
+  Map,
+  Blob: class Blob {
+    constructor(parts, opts) { this.parts = parts; this.type = (opts || {}).type; }
+    text() { return this.parts.join(''); }
+  }
 };
+sandbox.URL = { createObjectURL: (b) => { sandbox.__lastBlob = b; return 'blob:mock'; }, revokeObjectURL() {} };
 sandbox.window = {
   localStorage: {
     getItem: (k) => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => store.set(k, String(v)),
     removeItem: (k) => store.delete(k)
   },
-  scrollTo() {}
+  scrollTo() {},
+  setTimeout,
+  Blob: sandbox.Blob
 };
 sandbox.window.window = sandbox.window;
 vm.createContext(sandbox);
@@ -141,6 +152,60 @@ check('progress moved off zero', byId.get('ringValue').textContent !== '0%', byI
 const afterOne = byId.get('doneCount').textContent;
 check('done count is 1 of N', /^1 of \d+$/.test(afterOne), afterOne);
 check('modal closed button wired', byId.get('closeLesson')._listeners.click.length === 1);
+
+console.log('--- key questions and answers pack ---');
+check('pack row rendered', kids('packList').length === 1, String(kids('packList').length));
+const packText = kids('packList')[0].textContent;
+check('pack counts questions not modules', /14 questions from 6 lessons/.test(packText), packText);
+check('pack says it reads offline', /without internet/.test(packText));
+check('no longer promises the whole book', !/whole track/i.test(packText));
+
+const packRow = kids('packList')[0];
+const viewBtn = packRow.children[1].children[0];
+const dlBtn = packRow.children[1].children[1];
+check('pack has a view button', viewBtn.textContent === 'View', viewBtn.textContent);
+check('pack has a download button', dlBtn.textContent === 'Download', dlBtn.textContent);
+
+viewBtn.dispatch('click');
+check('q&a panel opens on view', byId.get('qaPanel').hidden === false);
+check('q&a panel groups by subject', byId.get('qaPanel').children.length > 1, String(byId.get('qaPanel').children.length));
+check('q&a panel has questions and answers', /Q1\./.test(byId.get('qaPanel').textContent) && byId.get('qaPanel').textContent.length > 500);
+check('q&a panel does not include raw markup', !/<p>/.test(byId.get('qaPanel').textContent));
+const doneTitle = firstCard.children[1].textContent;
+check('q&a panel ticks the completed lesson', byId.get('qaPanel').textContent.includes(doneTitle + ' ✓'), doneTitle);
+viewBtn.dispatch('click');
+check('q&a panel toggles closed', byId.get('qaPanel').hidden === true);
+
+console.log('--- download produces a real file ---');
+const before = downloads.length;
+dlBtn.dispatch('click');
+check('a file download was triggered', downloads.length === before + 1, String(downloads.length - before));
+const file = downloads[downloads.length - 1];
+check('filename is track specific', /nabha-middle-key-questions\.html/.test(file.download), file.download);
+check('download link uses a blob url', /^blob:/.test(file.href), file.href);
+check('button now says Downloaded', kids('packList')[0].children[1].children[1].textContent === 'Downloaded');
+check('pack flag persisted', /middle/.test(store.get('nabha-learning-hub-progress-v2') || ''));
+
+console.log('--- generated pack document ---');
+const doc = sandbox.__lastBlob ? sandbox.__lastBlob.text() : '';
+check('pack is a standalone html document', doc.startsWith('<!DOCTYPE html>'));
+check('pack has inline styles so it works offline', doc.includes('<style>') && !/fonts\.googleapis/.test(doc));
+check('pack lists the track and question count', /key questions and answers/.test(doc) && /14 questions/.test(doc));
+check('pack renders every question', (doc.match(/<dt>/g) || []).length === 14, String((doc.match(/<dt>/g) || []).length));
+check('pack renders every answer', (doc.match(/<dd>/g) || []).length === 14, String((doc.match(/<dd>/g) || []).length));
+check('pack ticks the completed lesson', doc.includes('&#10003; ' + doneTitle), doneTitle);
+check('pack repeats each answer once', (doc.match(/Fluent readers spot the subject first/g) || []).length <= 1);
+check('pack is printable', doc.includes('@media print'));
+
+console.log('--- pack is inert once a staff member signs in ---');
+byId.get('signOut').dispatch('click');
+byId.get('roleStaff').dispatch('click');
+byId.get('staffPasscode').value = 'nabha-admin-2026';
+byId.get('staffForm').dispatch('submit');
+check('admin passcode accepted', byId.get('staffView').hidden === false);
+check('admin badge correct', byId.get('staffBadge').textContent === 'Administrator dashboard', byId.get('staffBadge').textContent);
+check('pack list is empty and did not throw', kids('packList').length === 0, String(kids('packList').length));
+check('student view hidden for admin', byId.get('portalView').hidden === true);
 
 console.log('--- another student is isolated ---');
 byId.get('signOut').dispatch('click');
@@ -205,6 +270,7 @@ byId.get('staffPasscode').value = 'nabha-admin-2026';
 byId.get('staffForm').dispatch('submit');
 check('admin passcode accepted', byId.get('staffView').hidden === false);
 check('admin badge correct', byId.get('staffBadge').textContent === 'Administrator dashboard', byId.get('staffBadge').textContent);
+
 
 console.log('--- sign out returns to signin ---');
 byId.get('signOut').dispatch('click');

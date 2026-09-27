@@ -870,6 +870,72 @@ h1 {
   padding-left: 12px;
 }
 
+.pack-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.qa-panel {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+}
+
+.qa-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.qa-head h3 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.qa-subject > h4 {
+  font-size: 0.78rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--primary-dark);
+  border-left: 3px solid var(--primary);
+  padding-left: 10px;
+  margin: 0 0 12px;
+}
+
+.qa-lesson {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.qa-lesson > strong {
+  font-size: 0.98rem;
+  margin-bottom: 6px;
+}
+
+.qa-q {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #3c4a42;
+  margin: 8px 0 0;
+}
+
+.qa-a {
+  color: #46554c;
+  font-size: 0.9rem;
+  margin: 3px 0 0;
+}
+
 @media (max-width: 900px) {
   .overview,
   .offline {

@@ -35,6 +35,15 @@ A student signs in by typing their own name or enrollment ID. Classmates are nev
 
 Faculty and admin sign in with a passcode and land on a dashboard showing per-student progress, per-subject completion, and class filters.
 
+## Key questions and answers
+
+Instead of downloading the whole course, each track produces a short revision sheet: the main question from every lesson with its answer, grouped by subject. There are currently 18 lessons and 39 questions across the three tracks.
+
+- **View** opens the questions in the page.
+- **Download** saves a standalone HTML file that opens with no connection and prints cleanly, so a mentor can hand it out on a shared tablet. It ticks off lessons the student has already completed.
+
+Both are generated from the lesson data, so the sheets stay in step with `web/data/lessons.js` — there is no second copy to maintain.
+
 **This is a demo, not real security.** The site is static, so all data lives in the browser's `localStorage` and the passcodes are readable in `web/data/staff.js`. A student who opens developer tools can read or edit any record. Real accounts and a shared database need a server-side login.
 
 ## Tests

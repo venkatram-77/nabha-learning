@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const lessonGrid = document.getElementById('lessonGrid');
   const emptyState = document.getElementById('emptyState');
   const packList = document.getElementById('packList');
+  const qaPanel = document.getElementById('qaPanel');
   const lessonModal = document.getElementById('lessonModal');
   const lessonTitle = document.getElementById('lessonTitle');
   const lessonMeta = document.getElementById('lessonMeta');
@@ -232,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
     completed = new Set();
     packs = new Set();
     staffFilter = 'All';
+    renderPacks();
     persistStaff();
     whoName.textContent = staff.name;
     whoMeta.textContent = `${staff.label} · ${staff.subject}`;
@@ -248,6 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
     packs = new Set();
     subject = 'All';
     staffFilter = 'All';
+    renderPacks();
     writeJson(SESSION_KEY, {});
     showView('signin');
     renderSignin();
@@ -363,39 +366,226 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function trackPack(trackKey) {
+    const track = tracks[trackKey] || { label: 'Student', grades: '' };
+    const packLessons = lessons.filter((lesson) => lesson.track === trackKey);
+    const subjects = [];
+    packLessons.forEach((lesson) => {
+      if (subjects.indexOf(lesson.subject) === -1) subjects.push(lesson.subject);
+    });
+    const pairs = packLessons.reduce((sum, lesson) => sum + lesson.sections.length, 0);
+    return { track: track, trackKey: trackKey, lessons: packLessons, subjects: subjects, pairs: pairs };
+  }
+
+  function renderQaPanel(trackKey) {
+    if (!student) return;
+    const pack = trackPack(trackKey);
+    qaPanel.hidden = false;
+    qaPanel.textContent = '';
+
+    const head = document.createElement('div');
+    head.className = 'qa-head';
+    const title = document.createElement('h3');
+    title.textContent = `${pack.track.label} · ${pack.pairs} questions`;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'ghost-btn';
+    close.textContent = 'Hide';
+    close.addEventListener('click', hideQaPanel);
+    head.appendChild(title);
+    head.appendChild(close);
+    qaPanel.appendChild(head);
+
+    pack.subjects.forEach((subjectName) => {
+      const group = document.createElement('section');
+      group.className = 'qa-subject';
+
+      const heading = document.createElement('h4');
+      heading.textContent = subjectName;
+      group.appendChild(heading);
+
+      pack.lessons
+        .filter((lesson) => lesson.subject === subjectName)
+        .forEach((lesson) => {
+          const block = document.createElement('div');
+          block.className = 'qa-lesson';
+
+          const name = document.createElement('strong');
+          const done = completed.has(lesson.id);
+          name.textContent = done ? `${lesson.title} ✓` : lesson.title;
+          block.appendChild(name);
+
+          lesson.sections.forEach((section, index) => {
+            const q = document.createElement('p');
+            q.className = 'qa-q';
+            q.textContent = `Q${index + 1}. ${section.heading}`;
+            const a = document.createElement('p');
+            a.className = 'qa-a';
+            a.textContent = section.body;
+            block.appendChild(q);
+            block.appendChild(a);
+          });
+
+          group.appendChild(block);
+        });
+
+      qaPanel.appendChild(group);
+    });
+  }
+
+  function hideQaPanel() {
+    qaPanel.hidden = true;
+    qaPanel.textContent = '';
+  }
+
+  function buildPackDocument(trackKey) {
+    const pack = trackPack(trackKey);
+    const doneIds = new Set(Array.from(completed));
+
+    const body = pack.subjects
+      .map((subjectName) => {
+        const blocks = pack.lessons
+          .filter((lesson) => lesson.subject === subjectName)
+          .map((lesson) => {
+            const done = doneIds.has(lesson.id);
+            const questions = lesson.sections
+              .map(
+                (section, index) =>
+                  `<dt>Q${index + 1}. ${escapeHtml(section.heading)}</dt>` +
+                  `<dd>${escapeHtml(section.body)}</dd>`
+              )
+              .join('');
+            return (
+              `<article class="lesson${done ? ' done' : ''}">` +
+              `<h3>${done ? '&#10003; ' : ''}${escapeHtml(lesson.title)}` +
+              `<span>${escapeHtml(lesson.level)} &middot; ${lesson.duration} min</span></h3>` +
+              `<p class="summary">${escapeHtml(lesson.summary)}</p>` +
+              `<dl>${questions}</dl>` +
+              `</article>`
+            );
+          })
+          .join('');
+        return `<section class="subject"><h2>${escapeHtml(subjectName)}</h2>${blocks}</section>`;
+      })
+      .join('');
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHtml(pack.track.label)} key questions and answers</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #163426; background: #f4fbf7; margin: 0; padding: 32px 20px; line-height: 1.6; }
+  .sheet { max-width: 820px; margin: 0 auto; }
+  header { border-bottom: 3px solid #1e7a4a; padding-bottom: 18px; margin-bottom: 26px; }
+  h1 { margin: 0 0 6px; font-size: 1.7rem; }
+  header p { margin: 0; color: #587165; }
+  .subject { margin-bottom: 30px; }
+  .subject > h2 { font-size: 1.1rem; color: #115734; border-left: 4px solid #1e7a4a; padding-left: 10px; margin: 0 0 14px; }
+  .lesson { background: #fff; border: 1px solid rgba(22,52,38,0.1); border-radius: 14px; padding: 18px; margin-bottom: 14px; break-inside: avoid; }
+  .lesson.done { border-color: #1e7a4a; }
+  .lesson h3 { margin: 0 0 4px; font-size: 1.02rem; display: flex; justify-content: space-between; gap: 10px; }
+  .lesson h3 span { color: #587165; font-size: 0.76rem; font-weight: 600; white-space: nowrap; }
+  .summary { margin: 0 0 12px; color: #3c4a42; }
+  dl { margin: 0; }
+  dt { font-weight: 700; margin-top: 10px; }
+  dd { margin: 4px 0 0; color: #3c4a42; }
+  footer { margin-top: 30px; border-top: 1px solid rgba(22,52,38,0.1); padding-top: 14px; color: #587165; font-size: 0.82rem; }
+  @media print { body { background: #fff; padding: 0; } .lesson { box-shadow: none; } }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <header>
+      <h1>${escapeHtml(pack.track.label)} &middot; key questions and answers</h1>
+      <p>${escapeHtml(pack.track.grades)} &middot; ${pack.lessons.length} lessons &middot; ${pack.pairs} questions &middot; tick marks show lessons you completed in the portal.</p>
+    </header>
+    ${body}
+    <footer>Nabha Learning Hub &middot; Digital learning for rural students in Nabha, Punjab</footer>
+  </div>
+</body>
+</html>
+`;
+  }
+
+  function downloadPack(trackKey) {
+    if (!student) return;
+    const doc = buildPackDocument(trackKey);
+    const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `nabha-${trackKey}-key-questions.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
   function renderPacks() {
+    if (!student) {
+      packList.textContent = '';
+      return;
+    }
     const track = tracks[student.track] || { label: 'Student', grades: '' };
+    const pack = trackPack(student.track);
     packList.textContent = '';
+    hideQaPanel();
 
     const saved = packs.has(student.track);
-    const pack = document.createElement('div');
-    pack.className = 'pack';
+    const row = document.createElement('div');
+    row.className = 'pack';
 
     const info = document.createElement('div');
     const strong = document.createElement('strong');
     strong.textContent = `${track.label} pack · ${track.grades}`;
     const span = document.createElement('span');
-    span.textContent = `${trackLessons().length} modules · works without internet`;
+    span.textContent = `${pack.pairs} questions from ${pack.lessons.length} lessons · reads without internet`;
     info.appendChild(strong);
     info.appendChild(span);
+
+    const actions = document.createElement('div');
+    actions.className = 'pack-actions';
+
+    const viewButton = document.createElement('button');
+    viewButton.type = 'button';
+    viewButton.className = 'ghost-btn';
+    viewButton.textContent = 'View';
+    viewButton.addEventListener('click', () => {
+      if (qaPanel.hidden) {
+        renderQaPanel(student.track);
+      } else {
+        hideQaPanel();
+      }
+    });
 
     const button = document.createElement('button');
     button.type = 'button';
     button.className = saved ? 'pack-btn is-saved' : 'pack-btn';
     button.textContent = saved ? 'Downloaded' : 'Download';
     button.addEventListener('click', () => {
-      if (packs.has(student.track)) {
-        packs.delete(student.track);
-      } else {
+      downloadPack(student.track);
+      if (!packs.has(student.track)) {
         packs.add(student.track);
+        persistStudent();
       }
-      persistStudent();
       renderPacks();
     });
 
-    pack.appendChild(info);
-    pack.appendChild(button);
-    packList.appendChild(pack);
+    actions.appendChild(viewButton);
+    actions.appendChild(button);
+    row.appendChild(info);
+    row.appendChild(actions);
+    packList.appendChild(row);
   }
 
   function renderPortal() {
