@@ -4,6 +4,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const roster = window.NLH_ROSTER;
   const progressStore = window.NLH_PROGRESS;
   const staffRoster = window.NLH_STAFF || [];
+  const videoFor = (window.NLH_VIDEO && window.NLH_VIDEO.forLesson) || (() => null);
+  const assignmentList = window.NLH_ASSIGNMENT_LIST;
+  const submissions = window.NLH_SUBMISSIONS;
 
   const SESSION_KEY = 'nabha-learning-hub-session-v2';
 
@@ -28,12 +31,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const hideDone = document.getElementById('hideDone');
   const lessonGrid = document.getElementById('lessonGrid');
   const emptyState = document.getElementById('emptyState');
+  const workList = document.getElementById('workList');
+  const workEmpty = document.getElementById('workEmpty');
   const packList = document.getElementById('packList');
   const qaPanel = document.getElementById('qaPanel');
   const lessonModal = document.getElementById('lessonModal');
   const lessonTitle = document.getElementById('lessonTitle');
   const lessonMeta = document.getElementById('lessonMeta');
   const lessonSummary = document.getElementById('lessonSummary');
+  const lessonVideo = document.getElementById('lessonVideo');
   const lessonBody = document.getElementById('lessonBody');
   const markDone = document.getElementById('markDone');
   const markOpen = document.getElementById('markOpen');
@@ -64,6 +70,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const subjectSummary = document.getElementById('subjectSummary');
   const staffRows = document.getElementById('staffRows');
   const staffEmpty = document.getElementById('staffEmpty');
+  const submissionSummary = document.getElementById('submissionSummary');
+  const submissionRows = document.getElementById('submissionRows');
+  const submissionEmpty = document.getElementById('submissionEmpty');
   const accessNote = document.getElementById('accessNote');
 
   progressStore.migrate();
@@ -73,6 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let staff = session.staff || null;
   let completed = new Set(student ? progressStore.forStudent(student.id).completed : []);
   let packs = new Set(student ? progressStore.forStudent(student.id).packs : []);
+  let watched = new Set(student ? progressStore.forStudent(student.id).watched : []);
   let subject = 'All';
   let activeLesson = null;
   let staffFilter = 'All';
@@ -113,7 +123,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function persistStudent() {
-    progressStore.save(student.id, { completed: completed, packs: packs });
+    progressStore.save(student.id, {
+      completed: completed,
+      packs: packs,
+      watched: watched
+    });
     writeJson(SESSION_KEY, { student: student, staff: null });
   }
 
@@ -217,6 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const stored = progressStore.forStudent(student.id);
     completed = new Set(stored.completed);
     packs = new Set(stored.packs);
+    watched = new Set(stored.watched);
     staff = null;
     subject = 'All';
     persistStudent();
@@ -232,8 +247,10 @@ document.addEventListener('DOMContentLoaded', () => {
     student = null;
     completed = new Set();
     packs = new Set();
+    watched = new Set();
     staffFilter = 'All';
     renderPacks();
+    renderWork();
     persistStaff();
     whoName.textContent = staff.name;
     whoMeta.textContent = `${staff.label} · ${staff.subject}`;
@@ -248,9 +265,11 @@ document.addEventListener('DOMContentLoaded', () => {
     staff = null;
     completed = new Set();
     packs = new Set();
+    watched = new Set();
     subject = 'All';
     staffFilter = 'All';
     renderPacks();
+    renderWork();
     writeJson(SESSION_KEY, {});
     showView('signin');
     renderSignin();
@@ -259,27 +278,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderOverview() {
     const track = tracks[student.track] || { label: 'Student', grades: '' };
+    const trackLessonsList = trackLessons();
     trackBadge.textContent = `${track.label} track · ${track.grades}`;
     greeting.textContent = `Welcome back, ${student.name.split(' ')[0]}`;
-    greetingNote.textContent = `${trackLessons().length} modules are unlocked for your track. Only you can see this progress — faculty and admins see the class totals, not your individual lessons.`;
+    greetingNote.textContent = `${trackLessonsList.length} modules are unlocked for your track. Every module has a video to watch and the written notes under it. Only you can see this progress — faculty and admins see the class totals, not your individual lessons.`;
 
     const { total, done, percent } = progress();
     ring.style.setProperty('--value', percent);
     ringValue.textContent = `${percent}%`;
     doneCount.textContent = `${done} of ${total}`;
 
-    const minutes = trackLessons()
+    const minutes = trackLessonsList
       .filter((lesson) => completed.has(lesson.id))
       .reduce((sum, lesson) => sum + lesson.duration, 0);
 
     const subjects = subjectList().length;
-    const nextUp = trackLessons().find((lesson) => !completed.has(lesson.id));
+    const nextUp = trackLessonsList.find((lesson) => !completed.has(lesson.id));
+    const watchedCount = trackLessonsList.filter((lesson) => watched.has(lesson.id)).length;
+    const uploaded = submissions.forStudent(student.id).length;
+    const setWork = assignmentList ? assignmentList.forTrack(student.track).length : 0;
 
     statRow.textContent = '';
     [
       { value: total, label: 'Modules in track' },
+      { value: `${watchedCount}/${total}`, label: 'Videos watched' },
       { value: subjects, label: 'Subjects covered' },
       { value: `${minutes} min`, label: 'Time studied' },
+      { value: `${uploaded}/${setWork}`, label: 'Work uploaded' },
       { value: nextUp ? nextUp.title : 'All done', label: 'Next lesson' }
     ].forEach((stat) => {
       const box = document.createElement('div');
@@ -326,6 +351,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     list.forEach((lesson) => {
       const done = completed.has(lesson.id);
+      const hasVideo = Boolean(videoFor(lesson));
+      const seen = watched.has(lesson.id);
       const card = document.createElement('button');
       card.type = 'button';
       card.className = done ? 'lesson-card is-done' : 'lesson-card';
@@ -335,10 +362,16 @@ document.addEventListener('DOMContentLoaded', () => {
       const pill = document.createElement('span');
       pill.className = 'pill';
       pill.textContent = lesson.subject;
+      top.appendChild(pill);
+      if (hasVideo) {
+        const play = document.createElement('span');
+        play.className = seen ? 'play is-seen' : 'play';
+        play.textContent = seen ? 'Watched' : 'Video';
+        top.appendChild(play);
+      }
       const tick = document.createElement('span');
       tick.className = 'tick';
       tick.textContent = '✓';
-      top.appendChild(pill);
       top.appendChild(tick);
 
       const title = document.createElement('h3');
@@ -353,7 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
       meta.textContent = `${lesson.level} · ${lesson.duration} min`;
       const go = document.createElement('span');
       go.className = 'go';
-      go.textContent = done ? 'Review' : 'Start';
+      go.textContent = done ? 'Review' : hasVideo ? 'Watch' : 'Start';
       foot.appendChild(meta);
       foot.appendChild(go);
 
@@ -588,11 +621,257 @@ document.addEventListener('DOMContentLoaded', () => {
     packList.appendChild(row);
   }
 
+  function formatBytes(bytes) {
+    const value = Number(bytes) || 0;
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function formatDate(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  function makeButton(className, label, onClick) {
+    const node = document.createElement('button');
+    node.type = 'button';
+    node.className = className;
+    node.textContent = label;
+    node.addEventListener('click', onClick);
+    return node;
+  }
+
+  function trackWork() {
+    if (!student || !assignmentList) return [];
+    return assignmentList.forTrack(student.track);
+  }
+
+  function readFileAsDataUrl(file, onDone, onError) {
+    const Reader = window.FileReader;
+    if (!Reader) {
+      onError();
+      return;
+    }
+    const reader = new Reader();
+    reader.onload = () => onDone(String(reader.result || ''));
+    reader.onerror = () => onError();
+    reader.readAsDataURL(file);
+  }
+
+  function openUpload(record) {
+    if (!record || !record.data) return;
+    window.open(record.data, '_blank', 'noopener');
+  }
+
+  function uploadWork(assignment, file, setStatus) {
+    if (!student || !file) return;
+    const maxMb = Number(assignment.maxMb) || 2;
+
+    if (!assignmentList.acceptsFile(assignment, file)) {
+      setStatus(`That file type is not accepted here. Upload ${assignmentList.acceptList(assignment).join(' or ')}.`, true);
+      return;
+    }
+    if (file.size > maxMb * 1024 * 1024) {
+      setStatus(`That file is ${formatBytes(file.size)}. Keep it under ${maxMb} MB, or take the photo at a lower resolution.`, true);
+      return;
+    }
+
+    readFileAsDataUrl(
+      file,
+      (data) => {
+        const saved = submissions.save(student.id, assignment.id, {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          data: data
+        });
+        if (!saved) {
+          setStatus(
+            'This device has no space left, so the upload was not saved. Ask your mentor to clear space, or upload a smaller photo.',
+            true
+          );
+          return;
+        }
+        persistStudent();
+        renderWork();
+        renderOverview();
+      },
+      () => setStatus('That file could not be read on this device. Choose it again.', true)
+    );
+  }
+
+  function workCard(assignment) {
+    const record = submissions.get(student.id, assignment.id);
+    const card = document.createElement('article');
+    card.className = record ? 'work-card is-sent' : 'work-card';
+
+    const head = document.createElement('div');
+    head.className = 'work-head';
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.textContent = assignment.subject;
+    const due = document.createElement('span');
+    const late = !record && assignmentList.isOverdue(assignment);
+    due.className = late ? 'work-due is-late' : 'work-due';
+    due.textContent = record
+      ? `Uploaded ${formatDate(record.uploadedAt)}`
+      : `Due ${formatDate(assignment.due)}`;
+    head.appendChild(pill);
+    head.appendChild(due);
+
+    const title = document.createElement('h3');
+    title.textContent = assignment.title;
+
+    const instructions = document.createElement('p');
+    instructions.className = 'work-instructions';
+    instructions.textContent = assignment.instructions;
+
+    const meta = document.createElement('p');
+    meta.className = 'work-meta';
+    meta.textContent = `${assignment.setBy} · about ${assignment.minutes} min · ${assignmentList
+      .acceptList(assignment)
+      .join(', ')} up to ${assignment.maxMb} MB`;
+
+    const controls = document.createElement('div');
+    controls.className = 'work-controls';
+
+    if (record) {
+      const sent = document.createElement('div');
+      sent.className = 'work-sent';
+      const name = document.createElement('strong');
+      name.textContent = record.name;
+      const size = document.createElement('span');
+      size.textContent = formatBytes(record.size);
+      sent.appendChild(name);
+      sent.appendChild(size);
+      controls.appendChild(sent);
+      controls.appendChild(makeButton('ghost-btn', 'Open', () => openUpload(record)));
+      controls.appendChild(
+        makeButton('ghost-btn is-danger', 'Remove', () => {
+          submissions.remove(student.id, assignment.id);
+          renderWork();
+          renderOverview();
+        })
+      );
+    }
+
+    const message = document.createElement('p');
+    message.className = 'work-message';
+    const setStatus = (text, isError) => {
+      message.textContent = text;
+      message.className = isError ? 'work-message is-error' : 'work-message';
+    };
+
+    const picker = document.createElement('label');
+    picker.className = 'upload-btn';
+    picker.textContent = record ? 'Replace file' : 'Upload work';
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = (assignment.accepts || []).join(',');
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      input.value = '';
+      uploadWork(assignment, file, setStatus);
+    });
+    picker.appendChild(input);
+    controls.appendChild(picker);
+    controls.appendChild(message);
+
+    card.appendChild(head);
+    card.appendChild(title);
+    card.appendChild(instructions);
+    card.appendChild(meta);
+    card.appendChild(controls);
+    return card;
+  }
+
+  function renderWork() {
+    if (!student || !assignmentList) {
+      workList.textContent = '';
+      workEmpty.hidden = true;
+      return;
+    }
+    const list = trackWork();
+    workList.textContent = '';
+    workEmpty.hidden = list.length > 0;
+    list.forEach((assignment) => {
+      workList.appendChild(workCard(assignment));
+    });
+  }
+
   function renderPortal() {
     renderOverview();
     renderChips();
+    renderWork();
     renderGrid();
     renderPacks();
+  }
+
+  function renderVideo(lesson) {
+    lessonVideo.textContent = '';
+    const entry = videoFor(lesson);
+
+    if (!entry) {
+      const note = document.createElement('div');
+      note.className = 'video-missing';
+      note.textContent =
+        'The video for this lesson is still being recorded. The written notes below cover the same points.';
+      lessonVideo.appendChild(note);
+      return;
+    }
+
+    const frame = document.createElement('div');
+    frame.className = 'video-frame';
+
+    if (entry.type === 'embed') {
+      const embed = document.createElement('iframe');
+      embed.setAttribute('src', entry.src);
+      embed.setAttribute('title', `${lesson.title} video`);
+      embed.setAttribute('allow', 'accelerometer; clipboard-write; encrypted-media; picture-in-picture');
+      embed.setAttribute('allowfullscreen', '');
+      embed.setAttribute('loading', 'lazy');
+      embed.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      frame.appendChild(embed);
+    } else {
+      const player = document.createElement('video');
+      player.controls = true;
+      player.preload = 'metadata';
+      player.playsInline = true;
+      const source = document.createElement('source');
+      source.setAttribute('src', entry.src);
+      source.setAttribute('type', 'video/mp4');
+      player.appendChild(source);
+      player.appendChild(
+        document.createTextNode('This browser cannot play the lesson video. Read the notes below instead.')
+      );
+      player.addEventListener('ended', () => markWatched(lesson));
+      player.addEventListener('error', () => {
+        const note = document.createElement('p');
+        note.className = 'work-message is-error';
+        note.textContent =
+          'The video did not load on this connection. The written notes below cover the same points.';
+        lessonVideo.appendChild(note);
+      });
+      frame.appendChild(player);
+    }
+
+    const caption = document.createElement('p');
+    caption.className = 'video-caption';
+    caption.textContent = entry.label;
+
+    lessonVideo.appendChild(frame);
+    lessonVideo.appendChild(caption);
+  }
+
+  function markWatched(lesson) {
+    if (!student || watched.has(lesson.id)) return;
+    watched.add(lesson.id);
+    persistStudent();
+    renderOverview();
+    renderGrid();
   }
 
   function openLesson(lesson) {
@@ -600,6 +879,7 @@ document.addEventListener('DOMContentLoaded', () => {
     lessonTitle.textContent = lesson.title;
     lessonMeta.textContent = `${lesson.subject} · ${lesson.level} · ${lesson.duration} min`;
     lessonSummary.textContent = lesson.summary;
+    renderVideo(lesson);
     lessonBody.textContent = '';
 
     lesson.sections.forEach((section) => {
@@ -855,6 +1135,138 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function submissionRowsFor(scoped) {
+    if (!assignmentList) return [];
+    const byId = new Map(allStudents().map((entry) => [entry.id, entry]));
+    const ids = new Set(scoped.map((report) => report.student.id));
+    return submissions
+      .list()
+      .map((row) => ({ row: row, student: byId.get(row.studentId) }))
+      .filter((entry) => entry.student && ids.has(entry.student.id))
+      .sort((a, b) => {
+        const byName = a.student.name.localeCompare(b.student.name);
+        return byName !== 0 ? byName : String(a.row.assignmentId).localeCompare(String(b.row.assignmentId));
+      });
+  }
+
+  function renderSubmissionSummary(scoped) {
+    submissionSummary.textContent = '';
+    if (!assignmentList) return;
+
+    const expected = new Map();
+    scoped.forEach((report) => {
+      assignmentList.forTrack(report.student.track).forEach((assignment) => {
+        if (!expected.has(assignment.id)) {
+          expected.set(assignment.id, { assignment: assignment, students: [] });
+        }
+        expected.get(assignment.id).students.push(report.student.id);
+      });
+    });
+    if (!expected.size) return;
+
+    const title = document.createElement('h2');
+    title.textContent = 'Homework handed in';
+    submissionSummary.appendChild(title);
+
+    const grid = document.createElement('div');
+    grid.className = 'subject-grid';
+    let handedIn = 0;
+    let waiting = 0;
+
+    expected.forEach((bucket) => {
+      const done = submissions
+        .forAssignment(bucket.assignment.id)
+        .filter((row) => bucket.students.indexOf(row.studentId) !== -1);
+      handedIn += done.length;
+      waiting += bucket.students.length - done.length;
+
+      const percent = bucket.students.length
+        ? Math.round((done.length / bucket.students.length) * 100)
+        : 0;
+
+      const card = document.createElement('div');
+      card.className = 'subject-card';
+
+      const head = document.createElement('div');
+      head.className = 'subject-head';
+      const name = document.createElement('strong');
+      name.textContent = bucket.assignment.title;
+      const value = document.createElement('span');
+      value.textContent = `${percent}%`;
+      head.appendChild(name);
+      head.appendChild(value);
+
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      const fill = document.createElement('span');
+      fill.style.width = `${percent}%`;
+      bar.appendChild(fill);
+
+      const meta = document.createElement('span');
+      meta.className = 'subject-meta';
+      meta.textContent = `${done.length} of ${bucket.students.length} handed in · due ${formatDate(
+        bucket.assignment.due
+      )}`;
+
+      card.appendChild(head);
+      card.appendChild(bar);
+      card.appendChild(meta);
+      grid.appendChild(card);
+    });
+
+    submissionSummary.appendChild(grid);
+
+    const note = document.createElement('p');
+    note.className = 'subject-note';
+    note.textContent = `${handedIn} file${handedIn === 1 ? '' : 's'} uploaded, ${waiting} still waiting across ${expected.size} set assignment${expected.size === 1 ? '' : 's'}.`;
+    submissionSummary.appendChild(note);
+  }
+
+  function renderSubmissionRows(scoped) {
+    const rows = submissionRowsFor(scoped);
+    submissionRows.textContent = '';
+    submissionEmpty.hidden = rows.length > 0;
+
+    rows.forEach((entry) => {
+      const assignment = assignmentList ? assignmentList.find(entry.row.assignmentId) : null;
+      const row = document.createElement('tr');
+
+      const nameCell = document.createElement('td');
+      nameCell.textContent = entry.student.name;
+
+      const workCell = document.createElement('td');
+      const title = document.createElement('strong');
+      title.textContent = assignment ? assignment.title : entry.row.assignmentId;
+      const meta = document.createElement('span');
+      meta.textContent = assignment ? assignment.subject : 'Unknown assignment';
+      workCell.appendChild(title);
+      workCell.appendChild(meta);
+
+      const fileCell = document.createElement('td');
+      fileCell.textContent = entry.row.name;
+
+      const sizeCell = document.createElement('td');
+      sizeCell.textContent = formatBytes(entry.row.size);
+
+      const whenCell = document.createElement('td');
+      whenCell.textContent = relativeTime(entry.row.uploadedAt);
+
+      const actionCell = document.createElement('td');
+      const actions = document.createElement('div');
+      actions.className = 'pack-actions';
+      actions.appendChild(makeButton('ghost-btn', 'Open', () => openUpload(entry.row)));
+      actionCell.appendChild(actions);
+
+      row.appendChild(nameCell);
+      row.appendChild(workCell);
+      row.appendChild(fileCell);
+      row.appendChild(sizeCell);
+      row.appendChild(whenCell);
+      row.appendChild(actionCell);
+      submissionRows.appendChild(row);
+    });
+  }
+
   function renderStaff() {
     const everyReport = reports();
     const scoped = staffFilter === 'All'
@@ -868,10 +1280,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const untouched = scoped.filter((report) => report.done === 0).length;
     const minutes = scoped.reduce((sum, report) => sum + report.minutes, 0);
     const average = scoped.length ? Math.round(scoped.reduce((s, r) => s + r.percent, 0) / scoped.length) : 0;
+    const handedIn = submissionRowsFor(scoped).length;
 
     staffBadge.textContent = `${staff.label} dashboard`;
     staffGreeting.textContent = `Progress across ${scoped.length} student${scoped.length === 1 ? '' : 's'}`;
-    staffNote.textContent = `Signed in as ${staff.name}. Students cannot see this page or each other’s progress — only faculty and admin roles reach it.`;
+    staffNote.textContent = `Signed in as ${staff.name}. Students cannot see this page or each other’s progress, and only faculty and admin roles reach the homework they have uploaded.`;
 
     staffRing.style.setProperty('--value', overall);
     staffRingValue.textContent = `${overall}%`;
@@ -883,7 +1296,8 @@ document.addEventListener('DOMContentLoaded', () => {
       { value: `${average}%`, label: 'Average per student' },
       { value: finished, label: 'Tracks finished' },
       { value: untouched, label: 'Not started' },
-      { value: `${Math.round(minutes / 60)} hr`, label: 'Study time logged' }
+      { value: `${Math.round(minutes / 60)} hr`, label: 'Study time logged' },
+      { value: handedIn, label: 'Files handed in' }
     ].forEach((stat) => {
       const box = document.createElement('div');
       box.className = 'stat-box';
@@ -899,6 +1313,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderStaffChips(scoped);
     renderSubjectSummary(scoped);
     renderStaffRows(scoped);
+    renderSubmissionSummary(scoped);
+    renderSubmissionRows(scoped);
     accessNote.textContent = window.NLH_ACCESS_NOTE || '';
   }
 

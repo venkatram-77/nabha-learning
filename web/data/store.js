@@ -86,11 +86,12 @@ window.NLH_PROGRESS = {
   forStudent: function forStudent(id) {
     var record = this.all()[id];
     if (!record) {
-      return { completed: [], packs: [], updatedAt: '' };
+      return { completed: [], packs: [], watched: [], updatedAt: '' };
     }
     return {
       completed: Array.isArray(record.completed) ? record.completed : [],
       packs: Array.isArray(record.packs) ? record.packs : [],
+      watched: Array.isArray(record.watched) ? record.watched : [],
       updatedAt: record.updatedAt || ''
     };
   },
@@ -100,9 +101,22 @@ window.NLH_PROGRESS = {
     store[id] = {
       completed: Array.from(record.completed || []),
       packs: Array.from(record.packs || []),
+      watched: Array.from(record.watched || []),
       updatedAt: new Date().toISOString()
     };
     writeJson(this.KEY, store);
+  },
+
+  markWatched: function markWatched(id, lessonId) {
+    var record = this.forStudent(id);
+    var watched = new Set(record.watched);
+    watched.add(lessonId);
+    this.save(id, {
+      completed: new Set(record.completed),
+      packs: new Set(record.packs),
+      watched: watched
+    });
+    return Array.from(watched);
   },
 
   migrate: function migrate() {
@@ -116,10 +130,101 @@ window.NLH_PROGRESS = {
     store[legacy.student.id] = {
       completed: Array.isArray(legacy.completed) ? legacy.completed : [],
       packs: Array.isArray(legacyPacks) ? legacyPacks : [],
+      watched: [],
       updatedAt: new Date().toISOString()
     };
     writeJson(this.KEY, store);
     return store;
+  }
+};
+
+window.NLH_SUBMISSIONS = {
+  KEY: 'nabha-learning-hub-submissions-v1',
+  DEFAULT_MAX_BYTES: 2 * 1024 * 1024,
+
+  all: function all() {
+    return readJson(this.KEY, {});
+  },
+
+  blank: function blank() {
+    return { name: '', type: '', size: 0, data: '', uploadedAt: '' };
+  },
+
+  get: function get(studentId, assignmentId) {
+    var forStudent = this.all()[studentId];
+    if (!forStudent || !forStudent[assignmentId]) return null;
+    var file = forStudent[assignmentId];
+    return {
+      studentId: studentId,
+      assignmentId: assignmentId,
+      name: file.name || '',
+      type: file.type || '',
+      size: Number(file.size) || 0,
+      data: file.data || '',
+      uploadedAt: file.uploadedAt || ''
+    };
+  },
+
+  forStudent: function forStudent(studentId) {
+    var self = this;
+    var forStudent = this.all()[studentId] || {};
+    return Object.keys(forStudent).map(function toEntry(assignmentId) {
+      return self.get(studentId, assignmentId);
+    });
+  },
+
+  list: function list() {
+    var self = this;
+    var store = this.all();
+    var rows = [];
+    Object.keys(store).forEach(function perStudent(studentId) {
+      var forStudent = store[studentId] || {};
+      Object.keys(forStudent).forEach(function perAssignment(assignmentId) {
+        rows.push(self.get(studentId, assignmentId));
+      });
+    });
+    return rows;
+  },
+
+  forAssignment: function forAssignment(assignmentId) {
+    return this.list().filter(function matches(row) {
+      return row.assignmentId === assignmentId;
+    });
+  },
+
+  save: function save(studentId, assignmentId, file) {
+    var maxBytes = this.DEFAULT_MAX_BYTES;
+    if (!file || !file.data) return false;
+    if (Number(file.size) > maxBytes) return false;
+
+    var store = this.all();
+    if (!store[studentId]) store[studentId] = {};
+    store[studentId][assignmentId] = {
+      name: file.name || 'work',
+      type: file.type || '',
+      size: Number(file.size) || 0,
+      data: file.data,
+      uploadedAt: new Date().toISOString()
+    };
+    try {
+      window.localStorage.setItem(this.KEY, JSON.stringify(store));
+      return true;
+    } catch (error) {
+      return false;
+    }
+  },
+
+  remove: function remove(studentId, assignmentId) {
+    var store = this.all();
+    if (!store[studentId]) return false;
+    delete store[studentId][assignmentId];
+    if (!Object.keys(store[studentId]).length) delete store[studentId];
+    try {
+      window.localStorage.setItem(this.KEY, JSON.stringify(store));
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
 };
 

@@ -936,6 +936,226 @@ h1 {
   margin: 3px 0 0;
 }
 
+.lesson-video {
+  margin: 0 0 20px;
+}
+
+.video-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #0d2418;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.video-frame video,
+.video-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #0d2418;
+}
+
+.video-caption {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+
+.video-missing {
+  border: 1px dashed rgba(22, 52, 38, 0.22);
+  border-radius: 16px;
+  padding: 26px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+  background: #f7fbf9;
+}
+
+.play {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--primary-dark);
+  background: #e2f5ea;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+}
+
+.play.is-seen {
+  background: #eef1ee;
+  color: var(--muted);
+}
+
+.work-zone {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 24px;
+  margin-bottom: 22px;
+  display: grid;
+  gap: 16px;
+}
+
+.work-zone h2 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+}
+
+.work-zone > div:first-child p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  max-width: 62ch;
+}
+
+.work-list {
+  display: grid;
+  gap: 14px;
+}
+
+.work-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px;
+  background: #fbfefc;
+  display: grid;
+  gap: 8px;
+}
+
+.work-card.is-sent {
+  border-color: var(--primary);
+  background: #f2fbf6;
+}
+
+.work-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.work-due {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+}
+
+.work-due.is-late {
+  color: #a4361a;
+}
+
+.work-card h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.work-instructions {
+  margin: 0;
+  color: #3c4a42;
+  font-size: 0.92rem;
+}
+
+.work-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.work-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.work-sent {
+  display: grid;
+  line-height: 1.3;
+}
+
+.work-sent strong {
+  font-size: 0.88rem;
+  word-break: break-word;
+}
+
+.work-sent span {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.upload-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 10px;
+  padding: 0.55rem 0.95rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.upload-btn:hover {
+  background: var(--primary-dark);
+}
+
+.upload-btn:focus-within {
+  outline: 3px solid var(--primary-dark);
+  outline-offset: 2px;
+}
+
+.upload-btn input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.ghost-btn.is-danger {
+  color: #a4361a;
+  background: #fdf3f0;
+}
+
+.work-message {
+  margin: 0;
+  flex: 1 1 100%;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.work-message.is-error {
+  color: #a4361a;
+  font-weight: 600;
+}
+
+.subject-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.progress-table td strong {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.progress-table td > span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
 @media (max-width: 900px) {
   .overview,
   .offline {
@@ -976,5 +1196,14 @@ h1 {
   .pack {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .work-zone {
+    padding: 18px;
+  }
+
+  .upload-btn {
+    width: 100%;
+    justify-content: center;
   }
 }

@@ -51,7 +51,8 @@ const ids = [
   'lessonBody','markDone','markOpen','closeLesson','roleStudent','roleStaff','lookupForm','lookupInput',
   'lookupSubmit','lookupError','lookupHint','matchList','staffForm','staffPasscode','staffError','staffHint',
   'staffBadge','staffGreeting','staffNote','staffRing','staffRingValue','staffDoneCount','staffStats',
-  'staffChips','staffHideDone','subjectSummary','staffRows','staffEmpty','accessNote','qaPanel'
+  'staffChips','staffHideDone','subjectSummary','staffRows','staffEmpty','accessNote','qaPanel',
+  'lessonVideo','workList','workEmpty','submissionSummary','submissionRows','submissionEmpty'
 ];
 ids.forEach((id) => {
   const el = makeEl();
@@ -84,6 +85,13 @@ const sandbox = {
   Math,
   Set,
   Map,
+  FileReader: class FileReader {
+    readAsDataURL(file) {
+      const bytes = Buffer.from(String(file && file.name ? file.name : 'work'), 'utf8');
+      this.result = `data:${(file && file.type) || 'application/octet-stream'};base64,${bytes.toString('base64')}`;
+      this.onload();
+    }
+  },
   Blob: class Blob {
     constructor(parts, opts) { this.parts = parts; this.type = (opts || {}).type; }
     text() { return this.parts.join(''); }
@@ -98,12 +106,22 @@ sandbox.window = {
   },
   scrollTo() {},
   setTimeout,
-  Blob: sandbox.Blob
+  Blob: sandbox.Blob,
+  FileReader: sandbox.FileReader,
+  open: (url) => { sandbox.__opened = url; return {}; }
 };
 sandbox.window.window = sandbox.window;
 vm.createContext(sandbox);
 
-for (const f of ['data/lessons.js', 'data/staff.js', 'data/access-note.js', 'data/store.js', 'app.js']) {
+for (const f of [
+  'data/lessons.js',
+  'data/media.js',
+  'data/assignments.js',
+  'data/staff.js',
+  'data/access-note.js',
+  'data/store.js',
+  'app.js'
+]) {
   vm.runInContext(fs.readFileSync(path.join(web, f), 'utf8'), sandbox, { filename: f });
 }
 
@@ -136,11 +154,40 @@ byId.get('lookupForm').dispatch('submit');
 check('exact-name match signs in directly', byId.get('portalView').hidden === false);
 check('staff view still hidden for a student', byId.get('staffView').hidden === true);
 check('header shows the student name', byId.get('whoName').textContent === 'Aarav Sharma', byId.get('whoName').textContent);
-check('4 stat boxes rendered', kids('statRow').length === 4, String(kids('statRow').length));
+check('6 stat boxes rendered', kids('statRow').length === 6, String(kids('statRow').length));
+check('videos watched stat starts empty', /^0\/\d+/.test(kids('statRow')[1].textContent.replace(/\s+/g, ' ')), kids('statRow')[1].textContent);
 const rendered = kids('lessonGrid').length;
 check('lesson grid rendered', rendered > 0, String(rendered));
 check('subject chips rendered', kids('subjectChips').length > 1, String(kids('subjectChips').length));
 check('ring percent set', byId.get('ringValue').textContent === '0%', byId.get('ringValue').textContent);
+check('lesson cards flag the video', /Video/.test(kids('lessonGrid')[0].textContent), kids('lessonGrid')[0].textContent);
+check('card invites the student to watch', /Watch/.test(kids('lessonGrid')[0].textContent));
+
+console.log('--- student watches the lesson video ---');
+const cardToWatch = kids('lessonGrid')[0];
+cardToWatch.dispatch('click');
+const frame = kids('lessonVideo')[0];
+const player = frame.children[0];
+check('lesson modal has a player', frame.className === 'video-frame' && player.tagName === 'VIDEO', frame.className + '/' + player.tagName);
+const sourceEl = player.children[0];
+check('player points at an mp4 source', /^https:\/\//.test(sourceEl.attributes.src) && /\.mp4$/.test(sourceEl.attributes.src), sourceEl.attributes.src);
+check('player has controls', player.controls === true);
+check('caption names the footage', /demo footage/.test(byId.get('lessonVideo').textContent));
+check('videos watched still zero before playback ends', /^0\/\d+/.test(kids('statRow')[1].textContent.replace(/\s+/g, ' ')));
+player.dispatch('ended');
+check('watching to the end is recorded', /[1-9]\/\d+/.test(kids('statRow')[1].textContent.replace(/\s+/g, ' ')), kids('statRow')[1].textContent);
+check('card badge flips to Watched', /Watched/.test(kids('lessonGrid')[0].textContent), kids('lessonGrid')[0].textContent);
+check('watched video persisted', /"watched":\["mid-eng-01"\]/.test(store.get('nabha-learning-hub-progress-v2') || ''), store.get('nabha-learning-hub-progress-v2'));
+player.dispatch('error');
+check('a video that will not load explains why', /did not load on this connection/.test(byId.get('lessonVideo').textContent), byId.get('lessonVideo').textContent);
+
+console.log('--- a lesson with no video yet still opens ---');
+delete sandbox.window.NLH_VIDEOS['mid-sci-01'];
+kids('lessonGrid').filter((c) => /Water and Its States/.test(c.textContent))[0].dispatch('click');
+check('missing video is called out', /still being recorded/.test(byId.get('lessonVideo').textContent), byId.get('lessonVideo').textContent);
+check('no player is rendered for it', kids('lessonVideo').length === 1 && kids('lessonVideo')[0].className === 'video-missing', kids('lessonVideo')[0].className);
+check('the written notes are still there', /Water and Its States/.test(byId.get('lessonTitle').textContent) && kids('lessonBody').length > 0);
+sandbox.window.NLH_VIDEOS['mid-sci-01'] = 'cc0-flower';
 
 console.log('--- student completes a lesson ---');
 const firstCard = kids('lessonGrid')[0];
@@ -152,6 +199,56 @@ check('progress moved off zero', byId.get('ringValue').textContent !== '0%', byI
 const afterOne = byId.get('doneCount').textContent;
 check('done count is 1 of N', /^1 of \d+$/.test(afterOne), afterOne);
 check('modal closed button wired', byId.get('closeLesson')._listeners.click.length === 1);
+
+console.log('--- student uploads faculty work ---');
+check('two assignments for the middle track', kids('workList').length === 2, String(kids('workList').length));
+const workCard = kids('workList')[0];
+const workText = workCard.textContent;
+check('assignment names the work', /Write a paragraph on your village/.test(workText), workText.slice(0, 120));
+check('assignment shows a due date', /Due \d/.test(workText), workText.slice(0, 160));
+check('assignment says who set it', /Gurpreet Singh/.test(workText));
+check('assignment lists accepted files', /JPG, PNG, PDF, TXT up to 2 MB/.test(workText), workText.slice(0, 220));
+check('work card starts unsubmitted', workCard.className === 'work-card', workCard.className);
+
+const pickFile = (card, file) => {
+  const picker = card.children[4].children[0];
+  const input = picker.children[0];
+  input.files = [file];
+  input.dispatch('change');
+  return card.children[4].children[1];
+};
+
+let message = pickFile(workCard, { name: 'notes.zip', type: 'application/zip', size: 2000 });
+check('rejected file type is refused', /not accepted/.test(message.textContent), message.textContent);
+check('error message is styled as an error', message.className === 'work-message is-error', message.className);
+check('nothing saved after a bad type', /is-sent/.test(kids('workList')[0].className) === false);
+
+message = pickFile(workCard, { name: 'huge.png', type: 'image/png', size: 5 * 1024 * 1024 });
+check('oversized file is refused', /under 2 MB/.test(message.textContent), message.textContent);
+check('nothing saved after an oversized file', /is-sent/.test(kids('workList')[0].className) === false);
+
+pickFile(workCard, { name: 'village-paragraph.jpg', type: 'image/jpeg', size: 120 * 1024 });
+check('card flips to submitted', kids('workList')[0].className === 'work-card is-sent', kids('workList')[0].className);
+check('card names the uploaded file', /village-paragraph\.jpg/.test(kids('workList')[0].textContent));
+check('card offers to replace the file', /Replace file/.test(kids('workList')[0].textContent));
+check('card offers to open the file', /Open/.test(kids('workList')[0].textContent));
+check('upload counter in the stats is 1 of 2', /^1\/2/.test(kids('statRow')[4].textContent.replace(/\s+/g, ' ')), kids('statRow')[4].textContent);
+const savedUpload = JSON.parse(store.get('nabha-learning-hub-submissions-v1') || '{}');
+check('upload stored under the student id', Object.keys(savedUpload['demo-aarav-sharma'] || {}).length === 1, JSON.stringify(Object.keys(savedUpload)));
+check('stored file keeps name and size', savedUpload['demo-aarav-sharma']['asg-mid-eng-01'].name === 'village-paragraph.jpg' && savedUpload['demo-aarav-sharma']['asg-mid-eng-01'].size === 120 * 1024);
+check('stored file is a data url', /^data:image\/jpeg;base64,/.test(savedUpload['demo-aarav-sharma']['asg-mid-eng-01'].data));
+
+console.log('--- student opens and removes their own work ---');
+const openBtn = kids('workList')[0].children[4].children[1];
+openBtn.dispatch('click');
+check('open button shows the file in a new tab', /^data:image\/jpeg;base64,/.test(sandbox.__opened || ''), sandbox.__opened);
+const removeBtn = kids('workList')[0].children[4].children[2];
+removeBtn.dispatch('click');
+check('remove clears the card', kids('workList')[0].className === 'work-card', kids('workList')[0].className);
+check('upload counter back to zero', /^0\/2/.test(kids('statRow')[4].textContent.replace(/\s+/g, ' ')), kids('statRow')[4].textContent);
+
+pickFile(kids('workList')[0], { name: 'village-paragraph.jpg', type: 'image/jpeg', size: 120 * 1024 });
+check('work can be uploaded again after removal', kids('workList')[0].className === 'work-card is-sent');
 
 console.log('--- key questions and answers pack ---');
 check('pack row rendered', kids('packList').length === 1, String(kids('packList').length));
@@ -215,6 +312,8 @@ byId.get('lookupForm').dispatch('submit');
 check('second student signed in', byId.get('whoName').textContent === 'Mehak Kaur', byId.get('whoName').textContent);
 check('second student starts at 0%', byId.get('ringValue').textContent === '0%', byId.get('ringValue').textContent);
 check('second student sees 0 done', /^0 of /.test(byId.get('doneCount').textContent), byId.get('doneCount').textContent);
+check('second student has uploaded nothing', /^0\/2/.test(kids('statRow')[4].textContent.replace(/\s+/g, ' ')), kids('statRow')[4].textContent);
+check('first student upload not shown to classmate', /village-paragraph/.test(byId.get('workList').textContent) === false);
 
 console.log('--- ambiguous lookup ---');
 byId.get('signOut').dispatch('click');
@@ -252,7 +351,7 @@ byId.get('staffForm').dispatch('submit');
 check('faculty passcode accepted', byId.get('staffView').hidden === false);
 check('student view hidden for faculty', byId.get('portalView').hidden === true);
 check('header shows faculty name', /Meharjit Kaur|Gurpreet Singh/.test(byId.get('whoName').textContent), byId.get('whoName').textContent);
-check('5 staff stat boxes', kids('staffStats').length === 5, String(kids('staffStats').length));
+check('5 staff stat boxes', kids('staffStats').length === 6, String(kids('staffStats').length));
 check('student rows rendered', kids('staffRows').length > 0, String(kids('staffRows').length));
 check('class filter chips rendered', kids('staffChips').length > 1, String(kids('staffChips').length));
 check('subject summary rendered', kids('subjectSummary').length > 0, String(kids('subjectSummary').length));
@@ -271,6 +370,29 @@ byId.get('staffForm').dispatch('submit');
 check('admin passcode accepted', byId.get('staffView').hidden === false);
 check('admin badge correct', byId.get('staffBadge').textContent === 'Administrator dashboard', byId.get('staffBadge').textContent);
 
+
+console.log('--- faculty reviews uploaded work ---');
+check('homework summary rendered', /Homework handed in/.test(byId.get('submissionSummary').textContent), byId.get('submissionSummary').textContent.slice(0, 120));
+check('summary counts the waiting work', /file.*uploaded, \d+ still waiting/.test(byId.get('submissionSummary').textContent), byId.get('submissionSummary').textContent.slice(-160));
+check('handed-in file listed', /village-paragraph\.jpg/.test(byId.get('submissionRows').textContent), byId.get('submissionRows').textContent.slice(0, 200));
+check('row names the student', /Aarav Sharma/.test(byId.get('submissionRows').textContent));
+check('row names the assignment', /Write a paragraph on your village/.test(byId.get('submissionRows').textContent));
+check('row shows the file size', /120 KB/.test(byId.get('submissionRows').textContent), byId.get('submissionRows').textContent.slice(0, 200));
+check('files handed in stat is 1', kids('staffStats')[5].children[0].textContent === '1', kids('staffStats')[5].children[0].textContent);
+const facultyRow = kids('submissionRows')[0];
+const facultyOpen = facultyRow.children[5].children[0].children[0];
+check('faculty can open a submission', facultyOpen.textContent === 'Open', facultyOpen.textContent);
+facultyOpen.dispatch('click');
+check('opening a submission shows the file', /^data:image\/jpeg;base64,/.test(sandbox.__opened || ''), sandbox.__opened);
+
+console.log('--- class filter scopes submitted work ---');
+const gradeChips = kids('staffChips').filter((c) => /^Class /.test(c.textContent));
+const classSeven = gradeChips.filter((c) => /^Class 7/.test(c.textContent))[0];
+classSeven.dispatch('click');
+check('filtering to Class 7 hides another class work', /village-paragraph\.jpg/.test(byId.get('submissionRows').textContent) === false, byId.get('submissionRows').textContent.slice(0, 160));
+check('empty message shown when a class has no work', byId.get('submissionEmpty').hidden === false);
+kids('staffChips')[0].dispatch('click');
+check('clearing the filter brings the work back', /village-paragraph\.jpg/.test(byId.get('submissionRows').textContent));
 
 console.log('--- sign out returns to signin ---');
 byId.get('signOut').dispatch('click');

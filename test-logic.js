@@ -14,13 +14,15 @@ const sandbox = { window: { localStorage }, console };
 sandbox.window.window = sandbox.window;
 vm.createContext(sandbox);
 
-for (const f of ['data/lessons.js', 'data/staff.js', 'data/store.js']) {
+for (const f of ['data/lessons.js', 'data/media.js', 'data/assignments.js', 'data/staff.js', 'data/store.js']) {
   vm.runInContext(fs.readFileSync(path.join(web, f), 'utf8'), sandbox, { filename: f });
 }
 
 const w = sandbox.window;
 const R = w.NLH_ROSTER;
 const P = w.NLH_PROGRESS;
+const S = w.NLH_SUBMISSIONS;
+const A = w.NLH_ASSIGNMENT_LIST;
 const lessons = w.NLH_LESSONS;
 
 let pass = 0, fail = 0;
@@ -89,6 +91,94 @@ const portalScript = fs.readFileSync(path.join(web, '..', 'university_portal', '
 check('university_portal uses the shared enrollment key', portalScript.includes("'nabha-learning-hub-enrollments'"));
 const portalHtml = fs.readFileSync(path.join(web, '..', 'university_portal', 'index.html'), 'utf8');
 check('university_portal links to the student portal', portalHtml.includes('../web/index.html'));
+
+console.log('--- lesson videos ---');
+const missingVideo = lessons.filter((l) => !w.NLH_VIDEO.forLesson(l));
+check('every syllabus lesson has a video', missingVideo.length === 0, missingVideo.map((l) => l.id).join(','));
+check('video source is an absolute url', lessons.every((l) => /^https:\/\//.test(w.NLH_VIDEO.forLesson(l).src)));
+check('video source is a playable file or embed', lessons.every((l) => ['file', 'embed'].indexOf(w.NLH_VIDEO.forLesson(l).type) !== -1));
+check('stats agree with the map', w.NLH_VIDEO.stats(lessons).ready === lessons.length);
+check('stats count the whole library', w.NLH_VIDEO.stats(lessons).total === lessons.length);
+check('unknown lesson has no video', w.NLH_VIDEO.forLesson({ id: 'nope-99' }) === null);
+check('every media key in the map exists', Object.keys(w.NLH_VIDEOS).every((id) => !!w.NLH_MEDIA[w.NLH_VIDEOS[id]]));
+check('no lesson is mapped twice to a broken entry', Object.keys(w.NLH_VIDEOS).length === lessons.length, `${Object.keys(w.NLH_VIDEOS).length} vs ${lessons.length}`);
+w.NLH_MEDIA['embed-demo'] = { type: 'embed', src: 'https://www.youtube-nocookie.com/embed/abc123', label: 'Embed demo' };
+w.NLH_VIDEOS['mid-sci-02'] = 'embed-demo';
+check('an embed source resolves as an embed', w.NLH_VIDEO.forLesson({ id: 'mid-sci-02' }).type === 'embed');
+check('an empty media entry resolves to nothing', (() => { w.NLH_MEDIA.empty = { type: 'file' }; w.NLH_VIDEOS['mid-sci-01'] = 'empty'; return w.NLH_VIDEO.forLesson({ id: 'mid-sci-01' }) === null; })());
+delete w.NLH_VIDEOS['mid-sci-01'];
+delete w.NLH_VIDEOS['mid-sci-02'];
+
+console.log('--- faculty assignments ---');
+const tracks = Array.from(new Set(lessons.map((l) => l.track)));
+check('every track has work set', tracks.every((t) => A.forTrack(t).length > 0), tracks.join(','));
+check('assignment ids are unique', new Set(w.NLH_ASSIGNMENTS.map((a) => a.id)).size === w.NLH_ASSIGNMENTS.length);
+check('every assignment belongs to a real track', w.NLH_ASSIGNMENTS.every((a) => tracks.indexOf(a.track) !== -1));
+check('every assignment has instructions for the student', w.NLH_ASSIGNMENTS.every((a) => String(a.instructions).length > 60));
+check('every assignment names the teacher', w.NLH_ASSIGNMENTS.every((a) => String(a.setBy).length > 3));
+check('every assignment has a cap on file size', w.NLH_ASSIGNMENTS.every((a) => a.maxMb >= 1 && a.maxMb <= 5));
+check('due dates parse', w.NLH_ASSIGNMENTS.every((a) => !Number.isNaN(new Date(a.due).getTime())));
+check('find returns the matching assignment', A.find('asg-mid-eng-01').subject === 'English');
+check('find returns undefined for an unknown id', A.find('asg-nope') === undefined);
+check('mime types render as short names', A.acceptList(A.find('asg-mid-sci-01')).join(', ') === 'JPG, PNG, PDF', A.acceptList(A.find('asg-mid-sci-01')).join(', '));
+
+const sciWork = A.find('asg-mid-sci-01');
+check('accepts a listed mime type', A.acceptsFile(sciWork, { name: 'drawing.jpg', type: 'image/jpeg' }));
+check('accepts a matching extension when the browser sends no type', A.acceptsFile(sciWork, { name: 'DRAWING.PDF', type: '' }));
+check('rejects a type that is not listed', A.acceptsFile(sciWork, { name: 'answer.zip', type: 'application/zip' }) === false);
+check('rejects a matching name with the wrong extension', A.acceptsFile(sciWork, { name: 'drawing.gif', type: '' }) === false);
+check('a track assignment is not offered to another track', A.forTrack('primary').every((a) => a.track === 'primary'));
+check('overdue is false the day before the deadline', A.isOverdue({ due: '2026-12-01' }, '2026-11-30T09:00:00Z') === false);
+check('overdue is true the day after the deadline', A.isOverdue({ due: '2026-12-01' }, '2026-12-02T09:00:00Z') === true);
+check('an assignment with no due date is never overdue', A.isOverdue({ due: '' }, '2026-12-02T09:00:00Z') === false);
+
+console.log('--- uploaded work storage ---');
+store.clear();
+const work = { name: 'village.jpg', type: 'image/jpeg', size: 2048, data: 'data:image/jpeg;base64,AAAA' };
+check('upload saves', S.save('demo-aarav-sharma', 'asg-mid-eng-01', work));
+check('upload reads back by student and assignment', S.get('demo-aarav-sharma', 'asg-mid-eng-01').name === 'village.jpg');
+check('upload records an upload time', typeof S.get('demo-aarav-sharma', 'asg-mid-eng-01').uploadedAt === 'string');
+check('missing upload reads as nothing', S.get('demo-aarav-sharma', 'asg-mid-sci-01') === null);
+check('unknown student reads as nothing', S.get('nobody', 'asg-mid-eng-01') === null);
+check('list has one row', S.list().length === 1);
+check('forStudent returns the upload', S.forStudent('demo-aarav-sharma').length === 1);
+check('a classmate sees no uploads', S.forStudent('demo-mehak-kaur').length === 0);
+check('faculty query by assignment finds it', S.forAssignment('asg-mid-eng-01').length === 1);
+check('faculty query by another assignment does not', S.forAssignment('asg-mid-sci-01').length === 0);
+check('a file with no data is refused', S.save('demo-aarav-sharma', 'asg-mid-sci-01', { name: 'x.jpg', size: 10, data: '' }) === false);
+check('a file over the storage cap is refused', S.save('demo-aarav-sharma', 'asg-mid-sci-01', { name: 'huge.jpg', size: S.DEFAULT_MAX_BYTES + 1, data: 'data:image/jpeg;base64,AAAA' }) === false);
+check('the refused oversized file left nothing behind', S.forAssignment('asg-mid-sci-01').length === 0);
+
+const realSetItem = localStorage.setItem;
+localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+check('a full device fails the upload instead of losing it silently', S.save('demo-mehak-kaur', 'asg-mid-sci-01', work) === false);
+localStorage.setItem = realSetItem;
+check('the failed upload was not written', S.forStudent('demo-mehak-kaur').length === 0);
+
+S.save('demo-aarav-sharma', 'asg-mid-eng-01', { name: 'village-v2.jpg', type: 'image/jpeg', size: 3000, data: 'data:image/jpeg;base64,BBBB' });
+check('re-uploading replaces the earlier file', S.list().length === 1 && S.get('demo-aarav-sharma', 'asg-mid-eng-01').name === 'village-v2.jpg');
+check('remove deletes the upload', S.remove('demo-aarav-sharma', 'asg-mid-eng-01'));
+check('removing twice is harmless', S.remove('demo-aarav-sharma', 'asg-mid-eng-01') === false);
+check('the student entry is cleared when empty', S.forStudent('demo-aarav-sharma').length === 0);
+
+console.log('--- watched videos in the progress record ---');
+store.clear();
+P.save('demo-aarav-sharma', { completed: new Set(['mid-eng-01']), packs: new Set(), watched: new Set(['mid-eng-01']) });
+check('watched video saved', P.forStudent('demo-aarav-sharma').watched.length === 1);
+check('markWatched adds a lesson', P.markWatched('demo-aarav-sharma', 'mid-sci-01').length === 2);
+check('markWatched does not duplicate', P.markWatched('demo-aarav-sharma', 'mid-sci-01').length === 2);
+check('watched does not disturb completed lessons', P.forStudent('demo-aarav-sharma').completed.length === 1);
+check('watched does not leak to a classmate', P.forStudent('demo-mehak-kaur').watched.length === 0);
+check('an older record without watched still loads', (() => {
+  localStorage.setItem(P.KEY, JSON.stringify({ 'demo-simranjit-singh': { completed: ['pri-eng-01'], packs: [] } }));
+  return P.forStudent('demo-simranjit-singh').watched.length === 0 && P.forStudent('demo-simranjit-singh').completed.length === 1;
+})());
+check('migration seeds an empty watched list', (() => {
+  store.clear();
+  localStorage.setItem(P.LEGACY_KEY, JSON.stringify({ student: { id: 'legacy-2' }, completed: ['pri-math-01'] }));
+  return P.migrate()['legacy-2'].watched.length === 0;
+})());
+check('progress and uploads use different keys', P.KEY !== S.KEY);
 
 console.log('');
 console.log(`${pass} passed, ${fail} failed`);

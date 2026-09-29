@@ -6,7 +6,7 @@
     <title>Student Portal | Nabha Learning Hub</title>
     <meta
       name="description"
-      content="Lesson library, progress tracking and offline study packs for students enrolled at the Nabha Learning Hub."
+      content="Lesson videos, progress tracking, faculty assignments with uploads, and key question and answer sheets for students enrolled at the Nabha Learning Hub."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -141,6 +141,8 @@
 
         <div class="subject-summary" id="subjectSummary"></div>
 
+        <div class="subject-summary" id="submissionSummary"></div>
+
         <div class="table-scroll">
           <table class="progress-table">
             <thead>
@@ -158,6 +160,25 @@
         </div>
         <p class="empty" id="staffEmpty" hidden>
           No students match this filter.
+        </p>
+
+        <div class="table-scroll">
+          <table class="progress-table">
+            <thead>
+              <tr>
+                <th scope="col">Student</th>
+                <th scope="col">Assignment</th>
+                <th scope="col">File</th>
+                <th scope="col">Size</th>
+                <th scope="col">Uploaded</th>
+                <th scope="col">Work</th>
+              </tr>
+            </thead>
+            <tbody id="submissionRows"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="submissionEmpty" hidden>
+          No work has been uploaded yet. It appears here as soon as a student submits.
         </p>
 
         <p class="access-note" id="accessNote"></p>
@@ -193,6 +214,21 @@
           </div>
         </div>
 
+        <div class="work-zone">
+          <div>
+            <h2>Assignments from your faculty</h2>
+            <p>
+              Upload the work your teacher set for this track. Take a photo of your notebook page,
+              or save your file as a PDF, then choose it below. Only your teacher sees what you
+              upload.
+            </p>
+          </div>
+          <div class="work-list" id="workList"></div>
+          <p class="empty" id="workEmpty" hidden>
+            No work has been set for your track yet.
+          </p>
+        </div>
+
         <div class="lesson-grid" id="lessonGrid"></div>
         <p class="empty" id="emptyState" hidden>
           Nothing matches this filter. Clear the filter to see every module.
@@ -223,6 +259,8 @@
         <h2 id="lessonTitle"></h2>
         <p class="lesson-summary" id="lessonSummary"></p>
 
+        <div class="lesson-video" id="lessonVideo"></div>
+
         <div class="lesson-body" id="lessonBody"></div>
 
         <div class="lesson-actions">
@@ -239,9 +277,11 @@
     </footer>
 
     <script src="data/lessons.js?v=2"></script>
+    <script src="data/media.js?v=1"></script>
+    <script src="data/assignments.js?v=1"></script>
     <script src="data/staff.js?v=1"></script>
     <script src="data/access-note.js?v=1"></script>
-    <script src="data/store.js?v=1"></script>
-    <script src="app.js?v=3"></script>
+    <script src="data/store.js?v=2"></script>
+    <script src="app.js?v=4"></script>
   </body>
 </html>
